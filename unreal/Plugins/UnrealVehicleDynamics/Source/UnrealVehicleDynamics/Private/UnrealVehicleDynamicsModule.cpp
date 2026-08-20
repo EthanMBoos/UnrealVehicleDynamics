@@ -1,4 +1,3 @@
-#include "Camera/CameraComponent.h"
 #include "Components/BoxComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
@@ -49,15 +48,6 @@ class FUnrealVehicleDynamicsModule final : public IModuleInterface {
     Aircraft->SetRootComponent(Body);
     Body->RegisterComponent();
     Body->SetSimulatePhysics(true);
-
-    UCameraComponent* Camera =
-        NewObject<UCameraComponent>(Aircraft, TEXT("ChaseCamera"));
-    Camera->SetupAttachment(Body);
-    Camera->SetRelativeLocation(FVector{-600.0, 0.0, 220.0});
-    Camera->SetRelativeRotation(FRotator{-12.0, 0.0, 0.0});
-    Camera->SetFieldOfView(70.0F);
-    Camera->SetActive(true);
-    Camera->RegisterComponent();
 
     UUvdAircraftComponent* Simulation =
         NewObject<UUvdAircraftComponent>(Aircraft, TEXT("VehicleDynamics"));

@@ -15,14 +15,14 @@ class UNREALVEHICLEDYNAMICS_API UUvdAircraftComponent : public UActorComponent {
   virtual ~UUvdAircraftComponent() override;
   virtual void BeginPlay() override;
   virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
-  virtual void TickComponent(
-      float DeltaTime, ELevelTick TickType,
-      FActorComponentTickFunction* ThisTickFunction) override;
   virtual void AsyncPhysicsTickComponent(float DeltaTime,
                                          float SimTime) override;
 
   FString RunConfigPath;
   FString TruthOutputPath;
+
+  void SetSimulationPaused(bool Paused);
+  bool IsSimulationPaused() const { return SimulationPaused; }
 
  private:
   bool LoadConfiguration();
@@ -30,12 +30,13 @@ class UNREALVEHICLEDYNAMICS_API UUvdAircraftComponent : public UActorComponent {
   bool ConfigureBody();
   bool ConfigureVisual();
   bool ConfigureCesium();
-  void ActivateChaseView();
   void SetInitialState();
 
   UPROPERTY(Transient)
   TObjectPtr<UPrimitiveComponent> Body;
 
   FUvdAircraftRuntime* Runtime = nullptr;
-  bool ChaseViewActive = false;
+  FVector PausedLinearVelocity = FVector::ZeroVector;
+  FVector PausedAngularVelocity = FVector::ZeroVector;
+  bool SimulationPaused = false;
 };

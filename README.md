@@ -98,6 +98,9 @@ cp .env.example .env
 The launcher builds the shared dependencies and Unreal plugin, starts the
 ArduPlane container, opens the full Unreal window, and cleans both processes up
 when either exits. The Cesium token stays in the ignored local `.env` file.
+Use `1`–`4` for chase, orbit, onboard, and side cameras. Right-drag to orbit,
+scroll to zoom, use `F` to find the aircraft, and press Space to pause while
+continuing to move the camera.
 After a bounded FBWA roll run, it writes Unreal truth, ArduPlane telemetry and
 DataFlash, and a self-contained HTML report under `runs/`. The report verifies
 the fixed-rate controller exchange and separates plant state from its estimate.

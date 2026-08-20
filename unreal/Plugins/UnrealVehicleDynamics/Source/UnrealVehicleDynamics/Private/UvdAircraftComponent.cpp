@@ -12,7 +12,6 @@
 #include "Eigen/Eigenvalues"
 #include "Engine/StaticMesh.h"
 #include "GameFramework/Actor.h"
-#include "GameFramework/PlayerController.h"
 #include "GameFramework/WorldSettings.h"
 #include "HAL/FileManager.h"
 #include "HAL/PlatformFile.h"
@@ -86,6 +85,7 @@ struct FUvdAircraftRuntime {
   bool HasReply = false;
   bool Released = false;
   bool Failed = false;
+  bool IgnoreDuplicateFramesUntilAdvance = false;
   TUniquePtr<IFileHandle> TruthFile;
   TUniquePtr<IFileHandle> ExchangeFile;
   ACesiumGeoreference* Georeference = nullptr;
@@ -590,7 +590,9 @@ bool ReceiveCommand(FUvdAircraftRuntime& Runtime) {
     const uint16 FrameRateHz = ReadUint16Le(Data + 2);
     const uint32 Frame = ReadUint32Le(Data + 4);
     if (Runtime.HasFrame && Frame == Runtime.LastFrame) {
-      ++Runtime.DuplicateControllerFrames;
+      if (!Runtime.IgnoreDuplicateFramesUntilAdvance) {
+        ++Runtime.DuplicateControllerFrames;
+      }
       if (Runtime.HasReply) {
         int32 Sent = 0;
         Runtime.ControllerSocket->SendTo(Runtime.CachedReply.GetData(),
@@ -611,6 +613,7 @@ bool ReceiveCommand(FUvdAircraftRuntime& Runtime) {
         Runtime.MissedControllerFrames += FrameDelta - 1;
       }
     }
+    Runtime.IgnoreDuplicateFramesUntilAdvance = false;
     if (!MapCommand(Runtime, Data, Channels, Runtime.ControllerCommand)) {
       continue;
     }
@@ -708,10 +711,7 @@ uvd::RigidBodyState ReadBodyState(const FUvdAircraftRuntime& Runtime,
 
 }  // namespace
 
-UUvdAircraftComponent::UUvdAircraftComponent() {
-  PrimaryComponentTick.bCanEverTick = true;
-  bAutoActivate = true;
-}
+UUvdAircraftComponent::UUvdAircraftComponent() { bAutoActivate = true; }
 
 UUvdAircraftComponent::~UUvdAircraftComponent() { delete Runtime; }
 
@@ -746,20 +746,27 @@ void UUvdAircraftComponent::EndPlay(const EEndPlayReason::Type EndPlayReason) {
   Super::EndPlay(EndPlayReason);
 }
 
-void UUvdAircraftComponent::TickComponent(
-    float DeltaTime, ELevelTick TickType,
-    FActorComponentTickFunction* ThisTickFunction) {
-  Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-  if (!ChaseViewActive) {
-    ActivateChaseView();
+void UUvdAircraftComponent::SetSimulationPaused(bool Paused) {
+  if (SimulationPaused == Paused || !Body || !Runtime || Runtime->Failed) {
+    return;
   }
-}
 
-void UUvdAircraftComponent::ActivateChaseView() {
-  if (APlayerController* Controller = GetWorld()->GetFirstPlayerController()) {
-    Controller->SetViewTarget(GetOwner());
-    ChaseViewActive = true;
-    UE_LOG(LogUvdAircraft, Display, TEXT("Chase camera active"));
+  SimulationPaused = Paused;
+  if (Paused) {
+    // Freeze only the vehicle and its lockstep exchange. Unreal and Cesium keep
+    // rendering normally, so the camera can move without stale temporal frames.
+    SetAsyncPhysicsTickEnabled(false);
+    Runtime->IgnoreDuplicateFramesUntilAdvance = true;
+    PausedLinearVelocity = Body->GetPhysicsLinearVelocity();
+    PausedAngularVelocity = Body->GetPhysicsAngularVelocityInRadians();
+    Body->SetPhysicsLinearVelocity(FVector::ZeroVector);
+    Body->SetPhysicsAngularVelocityInRadians(FVector::ZeroVector);
+    Body->PutRigidBodyToSleep();
+  } else {
+    Body->WakeAllRigidBodies();
+    Body->SetPhysicsLinearVelocity(PausedLinearVelocity);
+    Body->SetPhysicsAngularVelocityInRadians(PausedAngularVelocity);
+    SetAsyncPhysicsTickEnabled(true);
   }
 }
 

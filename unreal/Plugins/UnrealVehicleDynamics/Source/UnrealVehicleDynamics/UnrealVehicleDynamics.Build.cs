@@ -9,7 +9,7 @@ public class UnrealVehicleDynamics : ModuleRules
         CppStandard = CppStandardVersion.Latest;
         PublicDependencyModuleNames.AddRange(new[] { "Core", "CoreUObject", "Engine" });
         PrivateDependencyModuleNames.AddRange(new[] {
-            "CesiumRuntime", "Chaos", "Json", "Networking", "PhysicsCore", "Sockets"
+            "CesiumRuntime", "Chaos", "InputCore", "Json", "Networking", "PhysicsCore", "Sockets"
         });
 
         string PluginRoot = Path.GetFullPath(Path.Combine(ModuleDirectory, "../.."));
