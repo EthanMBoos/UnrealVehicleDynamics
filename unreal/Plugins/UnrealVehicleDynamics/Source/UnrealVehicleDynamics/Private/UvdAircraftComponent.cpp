@@ -15,6 +15,8 @@
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/WorldSettings.h"
 #include "HAL/FileManager.h"
+#include "HAL/PlatformFile.h"
+#include "HAL/PlatformFileManager.h"
 #include "HAL/PlatformMisc.h"
 #include "HAL/PlatformTime.h"
 #include "Materials/MaterialInstanceDynamic.h"
@@ -74,11 +76,18 @@ struct FUvdAircraftRuntime {
   TSharedPtr<FInternetAddr> ControllerEndpoint;
   TArray<uint8> CachedReply;
   uint32 LastFrame = 0;
+  uint16 ControllerFrameRateHz = 0;
+  uint16 ControllerPwm[4] = {0, 0, 0, 0};
   uint64 Step = 0;
+  uint64 ReleaseStep = 0;
+  uint64 MissedControllerFrames = 0;
+  uint64 DuplicateControllerFrames = 0;
   bool HasFrame = false;
   bool HasReply = false;
   bool Released = false;
   bool Failed = false;
+  TUniquePtr<IFileHandle> TruthFile;
+  TUniquePtr<IFileHandle> ExchangeFile;
   ACesiumGeoreference* Georeference = nullptr;
 };
 
@@ -437,10 +446,94 @@ void PollRelease(FUvdAircraftRuntime& Runtime) {
     if (Runtime.ControlSocket->RecvFrom(Data, sizeof(Data), Read, *Sender) &&
         Read >= 7 && FMemory::Memcmp(Data, "release", 7) == 0) {
       Runtime.Released = true;
+      Runtime.ReleaseStep = Runtime.Step;
+      Runtime.MissedControllerFrames = 0;
+      Runtime.DuplicateControllerFrames = 0;
       UE_LOG(LogUvdAircraft, Display,
              TEXT("ArduPlane armed; controller now drives the aircraft"));
     }
   }
+}
+
+bool WriteUtf8(IFileHandle& File, const FString& Text) {
+  const FTCHARToUTF8 Utf8(*Text);
+  return File.Write(reinterpret_cast<const uint8*>(Utf8.Get()), Utf8.Length());
+}
+
+FVector AttitudeDegrees(const uvd::Quaternion& Quaternion) {
+  const uvd::Matrix3 Rotation = Quaternion.toRotationMatrix();
+  const double Roll = FMath::Atan2(Rotation(2, 1), Rotation(2, 2));
+  const double Pitch = FMath::Asin(FMath::Clamp(-Rotation(2, 0), -1.0, 1.0));
+  const double Yaw = FMath::Atan2(Rotation(1, 0), Rotation(0, 0));
+  constexpr double DegreesPerRadian = 180.0 / std::numbers::pi;
+  return {Roll * DegreesPerRadian, Pitch * DegreesPerRadian,
+          Yaw * DegreesPerRadian};
+}
+
+bool WriteTruth(FUvdAircraftRuntime& Runtime, const uvd::RigidBodyState& State,
+                const uvd::AircraftEffectorState& Effectors,
+                const uvd::AircraftModelOutput& Model) {
+  if (!Runtime.TruthFile) {
+    return true;
+  }
+  const double TimeS = (Runtime.Step - Runtime.ReleaseStep) * Runtime.FixedDtS;
+  const FVector Attitude = AttitudeDegrees(State.q_body_to_ned);
+  const uvd::AirData& Air = Model.aerodynamics.air_data;
+  const FString Row = FString::Printf(
+      TEXT("%.6f,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,")
+          TEXT("%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f\n"),
+      TimeS, State.position_ned_m.x(), State.position_ned_m.y(),
+      State.position_ned_m.z(), Attitude.X, Attitude.Y, Attitude.Z,
+      State.omega_body_radps.x(), State.omega_body_radps.y(),
+      State.omega_body_radps.z(), Air.true_airspeed_mps,
+      Air.alpha_rad * 180.0 / std::numbers::pi,
+      Air.beta_rad * 180.0 / std::numbers::pi, Effectors.aileron_rad,
+      Effectors.elevator_rad, Effectors.rudder_rad, Effectors.throttle);
+  if (!WriteUtf8(*Runtime.TruthFile, Row)) {
+    return false;
+  }
+  Runtime.TruthFile->Flush();
+  return true;
+}
+
+bool WriteExchange(FUvdAircraftRuntime& Runtime,
+                   const uvd::RigidBodyState& State,
+                   const uvd::Vector3& VelocityNed,
+                   const uvd::Vector3& SpecificForceBody, double AirspeedMps) {
+  if (!Runtime.ExchangeFile || !Runtime.Released) {
+    return true;
+  }
+  const uint64 ReleasedSteps = Runtime.Step - Runtime.ReleaseStep;
+  const uint64 FinalStep =
+      static_cast<uint64>(FMath::RoundToDouble(12.0 / Runtime.FixedDtS));
+  if (ReleasedSteps > FinalStep) {
+    return true;
+  }
+  const FVector Attitude = AttitudeDegrees(State.q_body_to_ned);
+  const double TimeS = ReleasedSteps * Runtime.FixedDtS;
+  const FString Row = FString::Printf(
+      TEXT("%.9f,%.9f,%llu,%u,%u,%llu,%llu,")
+          TEXT("%.9f,%.9f,%.9f,%.12f,%.12f,%.12f,%.12f,")
+              TEXT("%.12f,%.12f,%.12f,%.12f,%.12f,%.12f,")
+                  TEXT("%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,")
+                      TEXT("%u,%u,%u,%u\n"),
+      TimeS, Runtime.Step * Runtime.FixedDtS, Runtime.Step, Runtime.LastFrame,
+      Runtime.ControllerFrameRateHz, Runtime.MissedControllerFrames,
+      Runtime.DuplicateControllerFrames, Attitude.X, Attitude.Y, Attitude.Z,
+      State.q_body_to_ned.w(), State.q_body_to_ned.x(), State.q_body_to_ned.y(),
+      State.q_body_to_ned.z(), State.omega_body_radps.x(),
+      State.omega_body_radps.y(), State.omega_body_radps.z(),
+      SpecificForceBody.x(), SpecificForceBody.y(), SpecificForceBody.z(),
+      State.position_ned_m.x(), State.position_ned_m.y(),
+      State.position_ned_m.z(), VelocityNed.x(), VelocityNed.y(),
+      VelocityNed.z(), AirspeedMps, Runtime.ControllerPwm[0],
+      Runtime.ControllerPwm[1], Runtime.ControllerPwm[2],
+      Runtime.ControllerPwm[3]);
+  if (!WriteUtf8(*Runtime.ExchangeFile, Row)) {
+    return false;
+  }
+  Runtime.ExchangeFile->Flush();
+  return true;
 }
 
 bool MapCommand(const FUvdAircraftRuntime& Runtime, const uint8* Data,
@@ -469,6 +562,11 @@ bool MapCommand(const FUvdAircraftRuntime& Runtime, const uint8* Data,
   return true;
 }
 
+// DEV NOTE: This follows ArduPilot's JSON SITL backend protocol documented in
+// libraries/SITL/examples/JSON/readme.md. Its servo packet carries a frame rate
+// and counter; in synchronized mode SITL waits for one returned state per new
+// frame. We replay the cached state on retries and count gaps so the exchange
+// log can verify that one controller frame advanced with each physics step.
 bool ReceiveCommand(FUvdAircraftRuntime& Runtime) {
   while (true) {
     if (!Runtime.ControllerSocket->Wait(ESocketWaitConditions::WaitForRead,
@@ -489,8 +587,10 @@ bool ReceiveCommand(FUvdAircraftRuntime& Runtime) {
     if (!Channels || ReadUint16Le(Data) != Magic) {
       continue;
     }
+    const uint16 FrameRateHz = ReadUint16Le(Data + 2);
     const uint32 Frame = ReadUint32Le(Data + 4);
     if (Runtime.HasFrame && Frame == Runtime.LastFrame) {
+      ++Runtime.DuplicateControllerFrames;
       if (Runtime.HasReply) {
         int32 Sent = 0;
         Runtime.ControllerSocket->SendTo(Runtime.CachedReply.GetData(),
@@ -499,8 +599,24 @@ bool ReceiveCommand(FUvdAircraftRuntime& Runtime) {
       }
       continue;
     }
+    if (Runtime.HasFrame) {
+      const uint32 FrameDelta = Frame - Runtime.LastFrame;
+      if (FrameDelta >= 0x80000000U) {
+        UE_LOG(LogUvdAircraft, Error,
+               TEXT("ArduPlane controller frame moved backwards: %u -> %u"),
+               Runtime.LastFrame, Frame);
+        return false;
+      }
+      if (FrameDelta > 1) {
+        Runtime.MissedControllerFrames += FrameDelta - 1;
+      }
+    }
     if (!MapCommand(Runtime, Data, Channels, Runtime.ControllerCommand)) {
       continue;
+    }
+    Runtime.ControllerFrameRateHz = FrameRateHz;
+    for (int32 Channel = 0; Channel < 4; ++Channel) {
+      Runtime.ControllerPwm[Channel] = ReadUint16Le(Data + 8 + 2 * Channel);
     }
     Runtime.ControllerEndpoint = Sender;
     Runtime.LastFrame = Frame;
@@ -561,7 +677,9 @@ bool SendState(FUvdAircraftRuntime& Runtime, const uvd::RigidBodyState& State) {
                                        Runtime.CachedReply.Num(), Sent,
                                        *Runtime.ControllerEndpoint) &&
       Sent == Runtime.CachedReply.Num();
-  return Runtime.HasReply;
+  return Runtime.HasReply &&
+         WriteExchange(Runtime, State, VelocityNed, SpecificForceBody,
+                       Air.equivalent_airspeed_mps);
 }
 
 uvd::RigidBodyState ReadBodyState(const FUvdAircraftRuntime& Runtime,
@@ -602,8 +720,8 @@ void UUvdAircraftComponent::BeginPlay() {
   Body = Cast<UPrimitiveComponent>(GetOwner()->GetRootComponent());
   Runtime = new FUvdAircraftRuntime();
   if (!Body || !Body->IsSimulatingPhysics() || !LoadConfiguration() ||
-      !ConfigureBody() || !ConfigureVisual() || !ConfigureCesium() ||
-      !OpenSockets(*Runtime)) {
+      !OpenTruthOutput() || !ConfigureBody() || !ConfigureVisual() ||
+      !ConfigureCesium() || !OpenSockets(*Runtime)) {
     Runtime->Failed = true;
     UE_LOG(LogUvdAircraft, Error, TEXT("UVD startup failed"));
     return;
@@ -620,6 +738,8 @@ void UUvdAircraftComponent::EndPlay(const EEndPlayReason::Type EndPlayReason) {
   SetAsyncPhysicsTickEnabled(false);
   if (Runtime) {
     CloseSockets(*Runtime);
+    Runtime->TruthFile.Reset();
+    Runtime->ExchangeFile.Reset();
   }
   delete Runtime;
   Runtime = nullptr;
@@ -694,6 +814,56 @@ bool UUvdAircraftComponent::LoadConfiguration() {
         FPaths::ConvertRelativePathToFull(FPaths::GetPath(Path), AircraftPath);
   }
   return LoadAircraft(AircraftPath, *Runtime);
+}
+
+bool UUvdAircraftComponent::OpenTruthOutput() {
+  if (TruthOutputPath.IsEmpty()) {
+    return true;
+  }
+  FString Path = TruthOutputPath;
+  if (FPaths::IsRelative(Path)) {
+    Path = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir(), Path);
+  }
+  IFileManager::Get().MakeDirectory(*FPaths::GetPath(Path), true);
+  Runtime->TruthFile.Reset(
+      FPlatformFileManager::Get().GetPlatformFile().OpenWrite(*Path));
+  if (!Runtime->TruthFile) {
+    UE_LOG(LogUvdAircraft, Error, TEXT("Could not open truth output %s"),
+           *Path);
+    return false;
+  }
+  const FString Header =
+      TEXT("time_s,north_m,east_m,down_m,roll_deg,pitch_deg,yaw_deg,") TEXT(
+          "p_radps,q_radps,r_radps,tas_mps,alpha_deg,beta_deg,aileron_rad,")
+          TEXT("elevator_rad,rudder_rad,throttle\n");
+  if (!WriteUtf8(*Runtime->TruthFile, Header)) {
+    return false;
+  }
+  Runtime->TruthFile->Flush();
+  const FString ExchangePath =
+      FPaths::Combine(FPaths::GetPath(Path), TEXT("exchange.csv"));
+  Runtime->ExchangeFile.Reset(
+      FPlatformFileManager::Get().GetPlatformFile().OpenWrite(*ExchangePath));
+  if (!Runtime->ExchangeFile) {
+    UE_LOG(LogUvdAircraft, Error, TEXT("Could not open exchange output %s"),
+           *ExchangePath);
+    return false;
+  }
+  const FString ExchangeHeader =
+      TEXT("time_s,physics_time_s,step,servo_frame,frame_rate_hz,")
+          TEXT("missed_frames,duplicate_frames,roll_deg,pitch_deg,yaw_deg,")
+              TEXT("q_w,q_x,q_y,q_z,p_radps,q_radps,r_radps,")
+                  TEXT("ax_mps2,ay_mps2,az_mps2,north_m,east_m,down_m,")
+                      TEXT("vn_mps,ve_mps,vd_mps,airspeed_mps,") TEXT(
+                          "aileron_pwm,elevator_pwm,throttle_pwm,rudder_pwm\n");
+  if (!WriteUtf8(*Runtime->ExchangeFile, ExchangeHeader)) {
+    return false;
+  }
+  Runtime->ExchangeFile->Flush();
+  UE_LOG(LogUvdAircraft, Display, TEXT("Writing truth to %s"), *Path);
+  UE_LOG(LogUvdAircraft, Display, TEXT("Writing lockstep exchange to %s"),
+         *ExchangePath);
+  return true;
 }
 
 bool UUvdAircraftComponent::ConfigureBody() {
@@ -929,6 +1099,20 @@ void UUvdAircraftComponent::AsyncPhysicsTickComponent(float DeltaTime,
     Runtime->Failed = true;
     UE_LOG(LogUvdAircraft, Error, TEXT("Vehicle model became invalid"));
     return;
+  }
+
+  if (Runtime->Released) {
+    const uint64 TruthInterval = static_cast<uint64>(FMath::Max(
+        1.0, FMath::RoundToDouble(1.0 / (20.0 * Runtime->FixedDtS))));
+    const uint64 ReleasedSteps = Runtime->Step - Runtime->ReleaseStep;
+    const uint64 FinalTruthStep =
+        static_cast<uint64>(FMath::RoundToDouble(12.0 / Runtime->FixedDtS));
+    if (ReleasedSteps <= FinalTruthStep && ReleasedSteps % TruthInterval == 0 &&
+        !WriteTruth(*Runtime, State, Effectors, Model)) {
+      Runtime->Failed = true;
+      UE_LOG(LogUvdAircraft, Error, TEXT("Could not write truth output"));
+      return;
+    }
   }
 
   const FVector Force =

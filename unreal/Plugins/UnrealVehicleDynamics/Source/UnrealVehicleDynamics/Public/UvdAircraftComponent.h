@@ -22,9 +22,11 @@ class UNREALVEHICLEDYNAMICS_API UUvdAircraftComponent : public UActorComponent {
                                          float SimTime) override;
 
   FString RunConfigPath;
+  FString TruthOutputPath;
 
  private:
   bool LoadConfiguration();
+  bool OpenTruthOutput();
   bool ConfigureBody();
   bool ConfigureVisual();
   bool ConfigureCesium();

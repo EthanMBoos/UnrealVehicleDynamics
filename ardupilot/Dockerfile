@@ -12,7 +12,7 @@ RUN git clone --filter=blob:none https://github.com/ArduPilot/ardupilot.git /ard
     git submodule update --init --recursive --depth 1
 RUN python3 -m venv /opt/ardupilot-venv && \
     /opt/ardupilot-venv/bin/pip install --no-cache-dir \
-      empy==3.3.4 future lxml pexpect pymavlink
+      empy==3.3.4 future lxml pexpect pymavlink 'plotly~=6.0'
 ENV PATH="/opt/ardupilot-venv/bin:${PATH}"
 RUN cd /ardupilot && ./waf configure --board sitl && ./waf plane
 
@@ -26,4 +26,5 @@ COPY --from=build /opt/ardupilot-venv /opt/ardupilot-venv
 COPY ardupilot/uvd.parm /opt/ardupilot/uvd.parm
 COPY ardupilot/entrypoint.sh /opt/ardupilot/entrypoint.sh
 COPY ardupilot/session.py /opt/ardupilot/session.py
+COPY ardupilot/report.py /opt/ardupilot/report.py
 ENTRYPOINT ["/opt/ardupilot/entrypoint.sh"]

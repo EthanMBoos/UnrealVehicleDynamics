@@ -39,6 +39,8 @@ class FUnrealVehicleDynamicsModule final : public IModuleInterface {
     if (!FParse::Value(FCommandLine::Get(), TEXT("UvdRun="), RunPath)) {
       return;
     }
+    FString TruthPath;
+    FParse::Value(FCommandLine::Get(), TEXT("UvdTruth="), TruthPath);
     AActor* Aircraft = World->SpawnActor<AActor>();
     UBoxComponent* Body =
         NewObject<UBoxComponent>(Aircraft, TEXT("AircraftPhysicsBody"));
@@ -60,6 +62,7 @@ class FUnrealVehicleDynamicsModule final : public IModuleInterface {
     UUvdAircraftComponent* Simulation =
         NewObject<UUvdAircraftComponent>(Aircraft, TEXT("VehicleDynamics"));
     Simulation->RunConfigPath = RunPath;
+    Simulation->TruthOutputPath = TruthPath;
     Simulation->RegisterComponent();
   }
 
