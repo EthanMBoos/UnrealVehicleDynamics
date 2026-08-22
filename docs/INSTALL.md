@@ -1,7 +1,7 @@
 # Installation and use
 
 There are two entry points. `uvd` is the fast headless engineering tool. `run.py` builds and launches
-the complete Unreal, Cesium, Chaos, and ArduPlane simulation.
+the complete Unreal, Cesium, and ArduPilot demonstrations.
 
 ## Headless CLI
 
@@ -16,15 +16,22 @@ From the repository root:
 
 ```sh
 build/uvd evaluate examples/run.json
-build/uvd simulate examples/run.json --duration 10 --output runs/headless.csv
+build/uvd simulate examples/run.json --duration 10 --output runs/aerosonde.csv
+build/uvd evaluate examples/otter-run.json
+build/uvd simulate examples/otter-run.json --duration 10 --output runs/otter.csv
+```
+
+The Aerosonde additionally provides optional operating-point analysis:
+
+```sh
 build/uvd trim examples/run.json
 build/uvd linearize examples/run.json --output runs/linear-model.json
 ```
 
-`evaluate` reports air data, coefficients, and the aerodynamic, propeller, and total body wrench at
-the run's initial state. Pass `--input sample.json` or `--input -` to evaluate another state and
-command. `simulate` uses constant trim commands and the core RK4 integrator. Its JSON summary goes to
-standard output; `--output` additionally saves the trajectory as CSV.
+`evaluate` reports the selected model's state, forces, moments, and diagnostic terms. Pass
+`--input sample.json` or `--input -` to evaluate another state and command. `simulate` uses the
+run's constant command and the model's RK4 integrator. Its JSON summary goes to standard output;
+`--output` additionally saves the trajectory as CSV. Trim and linearization apply to the Aerosonde.
 
 Two lightweight checks live outside the runtime:
 
@@ -37,7 +44,7 @@ The first needs only Python's standard library. The second is optional and needs
 package. It compares the aerodynamic equations with the small JSBSim fixture under
 `validation/reference/`; it does not make JSBSim a simulator dependency.
 
-## Unreal v1
+## Unreal demonstrations
 
 The working local baseline is:
 
@@ -78,18 +85,24 @@ Launch from the repository root:
 ./run.py
 ```
 
+That runs the Aerosonde with ArduPlane. The Otter and ArduRover demonstration is:
+
+```sh
+./run.py otter
+```
+
 The launcher:
 
 1. locates Unreal Editor 5.8;
 2. configures CMake and stages Eigen for UnrealBuildTool;
 3. compiles the editor target;
-4. builds the ArduPlane Docker image if it is missing;
+4. builds the selected ArduPilot Docker image if it is missing;
 5. opens the full Unreal game window and starts the container; and
 6. stops the remaining process when either side exits.
 
 If Unreal is installed somewhere else, set `UVD_UNREAL_EDITOR` to its executable. Edit
-`examples/run.json` for the origin, initial state, wind, trim, ports, or Cesium asset. Edit
-`examples/aircraft/aerosonde.json` for the model parameters and PWM mapping.
+`examples/run.json` or `examples/otter-run.json` for the selected run. Plant parameters live in
+`examples/aircraft/aerosonde.json` and `examples/boats/fossen_otter.json`.
 
 ## Source tools
 

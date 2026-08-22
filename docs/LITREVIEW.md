@@ -1,506 +1,190 @@
-# Literature review and research direction
+# Literature review
 
-**Primary window:** January 2025 through 19 August 2026
+**Review window:** January 2025 through 19 August 2026
 
-## Executive conclusion
+This narrative review covers fixed-wing dynamics, simulation, model
+verification, flight validation, ArduPilot, PX4, Unreal, and current research
+software. It is not a systematic or bibliometric review. Software capabilities
+come from official documentation and repositories; vendor performance claims
+are identified as such.
 
-The strongest research contribution available to this project is not another Unreal-based UAV
-simulator. Unreal, AirSim descendants, Gazebo, JSBSim, PX4, ArduPilot, and newer modular simulation
-frameworks already cover much of that feature space. Recent papers frequently combine a game engine,
-an autopilot, ROS, geospatial scenery, or synthetic sensors. Those integrations are useful, but the
-combination alone is no longer a convincing novelty claim.
+## Findings
 
-The more defensible opportunity is an **open, deterministic, controls-oriented fixed-wing benchmark**
-that uses one inspectable nonlinear plant for:
+### Simulator integration is established work
 
-- headless model evaluation, trim, linearization, and simulation;
-- real-time execution in Unreal without allowing rendering to redefine the plant;
-- ArduPlane and PX4 closed-loop experiments with identical initial conditions, actuator and sensor
-  contracts, disturbances, timing rules, and metrics; and
-- a traceable verification and validation ladder ending in held-out flight data and uncertainty
-  bounds.
+Dimmig et al. survey 44 aerial-robot simulators and compare 14 in depth. Their
+results show that dynamics, sensors, speed, maintenance, extensibility, and
+environment quality remain use-case tradeoffs
+([2025](https://doi.org/10.1109/MRA.2024.3433171)).
 
-This leads to a clear strategy:
+Recent platforms already combine many of the features relevant here:
 
-1. Finish ArduPlane first because its external JSON interface fits the existing architecture and is
-   the shortest path to an end-to-end fixed-wing result.
-2. Keep the core, cases, logs, and scientific identity autopilot-neutral.
-3. Add PX4 only after the ArduPlane path is stable, then publish the stronger same-plant comparison.
-4. Treat Unreal as the geospatial, contact, and future perception layer—not as evidence of aerodynamic
-   fidelity.
-5. Do not call the project a digital twin or high-fidelity aircraft model until physical validation
-   supports those terms.
+- ProVANT provides Gazebo/ROS SIL and HIL control experiments
+  ([Morais et al., 2025](https://doi.org/10.3390/aerospace12090762)).
+- AeroQT combines JSBSim, MAVLink, PX4, HIL, and real-flight views
+  ([Aziz and Loya, 2025](https://doi.org/10.3389/arc.2025.14524)).
+- `aerial-autonomy-stack` supports PX4, ArduPilot, ROS 2, containers, and
+  faster-than-real-time execution
+  ([Panerati et al., 2026](https://arxiv.org/abs/2602.07264)).
+- ROSplane 2.0 emphasizes readable fixed-wing research software and movement
+  from simulation to flight
+  ([Reid et al., 2026](https://arxiv.org/abs/2510.01041)).
+- A fixed-wing swarm testbed reports JSBSim dynamics, deterministic seeds,
+  synchronized replay, and mission logs
+  ([Bolz et al., 2026](https://controls.papercept.net/conferences/scripts/rtf/ICUAS26_ContentListWeb_3.html)).
 
-The current code is a promising start because it already treats trim, linearization, timestep
-convergence, explicit frames, and reference comparison as first-class operations. The research
-contribution will come from adding an experimental contract and reproducible evidence only after a
-specific research question requires them.
+ArduPilot and PX4 both provide first-party simulator integrations. Project
+AirSim provides deterministic stepping and PX4 lockstep. PteroSim markets UE5,
+fixed-wing and VTOL dynamics, and both autopilots; those are product claims,
+not peer-reviewed validation.
 
-## Scope and method
+An Unreal scene plus an autopilot connection is therefore an implementation
+choice, not a research result by itself.
 
-This is a structured narrative review, not a PRISMA systematic review or a bibliometric census. It
-prioritizes 2025 and 2026 peer-reviewed papers, proceedings, and clearly labeled preprints. Older work
-is included only where it defines a major simulator or verification precedent. Official project
-documentation and repositories are used for current software capabilities; vendor pages are treated
-as product claims, not academic validation.
+### Unreal is usually the scene and sensor layer
 
-The search covered combinations of:
+AirSim established the combination of Unreal rendering, vehicle APIs,
+synthetic sensors, and autopilot connections. Colosseum moved that design to
+Unreal Engine 5; Cosys-AirSim continues the ecosystem. JSBSim ships an Unreal
+reference application, while AeroSim separates dynamics and rendering through
+co-simulation interfaces.
 
-- fixed-wing UAV, flight dynamics, system identification, uncertainty, and flight validation;
-- simulation, benchmark, reproducibility, SIL/SITL, HIL/HITL, and digital twin;
-- Unreal Engine, AirSim, Colosseum, Cosys-AirSim, AeroSim, Gazebo, and JSBSim; and
-- ArduPilot, ArduPlane, PX4, ROS 2, differentiable physics, and reinforcement learning.
+Recent studies use Unreal mainly for environment, perception, and mission
+work: solar-plant inspection with ROS 2 and ArduPilot
+([Andrade et al., 2025](https://doi.org/10.1016/j.ifacol.2025.09.198)), urban
+manned-unmanned formation with Cesium and PX4
+([Lee et al., 2025](https://doi.org/10.1109/DASC66011.2025.11257249)), and
+low-altitude traffic simulation
+([Li et al., 2025](https://arxiv.org/abs/2512.24112)).
 
-The main limitation is that 2026 is incomplete. Preprints can change status, software repositories can
-move quickly, and a qualitative literature search cannot support an absolute “first” claim. Before a
-paper submission, the novelty statement should be rerun through Scopus, Web of Science, IEEE Xplore,
-Google Scholar, and the target venue's proceedings.
+Unreal Robotics Lab uses MuJoCo as the physics authority and Unreal for scene
+construction and rendering
+([Embley-Riches et al., 2026](https://arxiv.org/abs/2504.14135)). This supports
+the same division used by the Otter path in this repository: the engineering
+solver commits state; Unreal renders it.
 
-## What exists in this repository today
+### Fixed-wing validation increasingly uses measured data
 
-The distinction between implemented and planned work matters because a literature review can easily
-turn a roadmap into an accidental claim.
+Recent fixed-wing work derives models from aerodynamic tools, identifies them
+from flight data, checks modal response, and validates on withheld maneuvers:
 
-| Capability | Status on 18 August 2026 | Research meaning |
-|---|---|---|
-| C++ fixed-wing force and moment model | Implemented | Transparent reference plant, presently using educational Aerosonde parameters |
-| Six-degree-of-freedom headless rigid-body propagation | Implemented | Deterministic contact-free experiments are possible |
-| JSON aircraft and run configuration | Implemented | Cases can be defined without editing equations |
-| Model evaluation, RK4 simulation, trim, and discrete linearization | Implemented | Good basis for a controls benchmark |
-| Timestep convergence script | Implemented | Lightweight numerical verification |
-| Run bundles, comparison, and deterministic replay | Planned | Add when a defined experiment needs artifact reproduction |
-| Broad unit/sign and envelope suite | Planned | Current checks are narrower and do not replace physical validation |
-| Aero-only JSBSim comparison fixture | Implemented | Detects equation, frame, sign, unit, and scaling errors; the fixture mirrors the same equations |
-| Physical Aerosonde validation | Not implemented | No claim of real-aircraft fidelity is yet supported |
-| Unreal/Chaos runtime | Working local v1 | Shared model drives an air-started Chaos actor; formal timing evidence is future work |
-| Cesium runtime | Working local v1 | Live LLA/local-NED path and optional ion terrain work on macOS |
-| ArduPlane JSON/UDP transport | Working local v1 | Readiness-gated FBWA flight works locally; fault and cross-platform suites are future work |
-| PX4 adapter | Not implemented | A research opportunity, not current capability |
-| Sensor errors, actuator dynamics, HIL, or flight data | Not implemented | Required for stronger closed-loop and sim-to-real claims |
+- AVL-to-Gazebo model generation with synchronized PX4 parameters
+  ([Cavalheiro and Guerreiro, 2025](https://doi.org/10.1109/YEF-ECE66503.2025.11117433));
+- open- and closed-loop identification of a small flying wing
+  ([Matt et al., 2025](https://doi.org/10.2514/1.C038147));
+- Skywalker X8 identification using estimated aerodynamic angles
+  ([Løw-Hansen et al., 2025](https://doi.org/10.1007/s13272-025-00816-3));
+- nonlinear aero-propulsive identification with out-of-sample checks
+  ([Figueira et al., 2025](https://doi.org/10.2514/1.C037964));
+- CFD-derived six-degree-of-freedom dynamics compared with three flight
+  datasets ([Jayanti et al., 2026](https://doi.org/10.3311/PPtr.41190)); and
+- overset CFD and flight telemetry for a longitudinal model
+  ([Siswantara et al., 2026](https://doi.org/10.1016/j.taml.2026.100702)).
 
-Agreement with the checked-in JSBSim fixture is **software verification**, not independent aerodynamic
-validation: both sides encode the same educational equations. It is still valuable because independent
-implementations expose sign, axis, unit, normalized-rate, and reference-point errors. Real validation
-requires a physical reference such as wind-tunnel measurements or held-out flight trajectories.
+FalconWing combines an identified nonlinear plant, a photorealistic world, and
+a physical vision-only landing result
+([Miao et al., 2025](https://arxiv.org/abs/2505.01383)). García-Gascón et al.
+publish 240 fixed-wing missions with synchronized telemetry, mission data, and
+parameter snapshots
+([2026](https://doi.org/10.1038/s41597-026-06716-3)).
 
-## State of the field in 2025–2026
+The educational Aerosonde in this repository supports equation verification
+and controls examples. Physical accuracy requires measured coefficients,
+wind-tunnel data, or flight data from a specific aircraft.
 
-### Simulator breadth is no longer scarce
+### Digital twin has a physical-data requirement
 
-The 2025 version of Dimmig et al.'s survey catalogs 44 aerial-robot simulators and compares 14 in
-depth. Its important lesson is not that one package wins; simulator choice remains use-case dependent,
-and dynamics, sensors, speed, extensibility, maintenance, and environment fidelity trade against one
-another. Fixed-wing users remain less uniformly served than multirotor perception and learning users,
-but a new feature checklist is not enough to establish novelty
-([Dimmig et al., 2025](https://doi.org/10.1109/MRA.2024.3433171)).
+Current reviews distinguish a simulation model from a twin that is calibrated,
+synchronized, or updated from a physical asset
+([Moon, 2025](https://journal.kci.go.kr/kiots/archive/articleView?artiId=ART003259737);
+[Zhang et al., 2025](https://doi.org/10.3390/drones9060394)). Valencia et al.
+compare simulation with fixed-wing and multirotor flight logs
+([2025](https://doi.org/10.1007/s10846-025-02276-7)); Guevara et al. combine
+model, hardware, and experiment validation
+([2025](https://doi.org/10.2139/ssrn.5145160)).
 
-Recent general platforms continue to expand the same crowded space. ProVANT presents a modular
-Gazebo/ROS environment for SIL and HIL control work across multirotors, tilt-rotors, and aerial
-manipulators ([Morais et al., 2025](https://doi.org/10.3390/aerospace12090762)). AeroQT combines
-JSBSim, MAVLink, PX4, simulation, HIL, and real-flight views in a C++/Qt test bench
-([Aziz and Loya, 2025](https://doi.org/10.3389/arc.2025.14524)). The 2026
-`aerial-autonomy-stack` supplies a common PX4/ArduPilot interface, ROS 2, perception, containers, and
-faster-than-real-time execution, although its emphasis is vertically integrated multirotor and VTOL
-autonomy rather than conventional fixed-wing model analysis
-([Panerati et al., 2026](https://arxiv.org/abs/2602.07264)).
-
-Two ICUAS 2026 papers narrow the gap further. ROSplane 2.0 explicitly presents lean, readable,
-modular fixed-wing research software and an aerodynamic-model workflow intended to ease movement
-from simulation to flight ([Reid et al., 2026](https://arxiv.org/abs/2510.01041)). Bolz et al.'s
-fixed-wing swarm testbed already reports JSBSim dynamics, deterministic seeds, synchronized replay,
-and safety/effectiveness logs ([ICUAS program, 2026](https://controls.papercept.net/conferences/scripts/rtf/ICUAS26_ContentListWeb_3.html)).
-These are strong precedents for readability and repeatability, so this project must distinguish itself
-through the complete verification ladder and controlled production-autopilot experiment—not those
-features in isolation.
-
-The implication is direct: modularity, MAVLink, SIL/HIL, or two autopilot connectors are useful
-capabilities, but none is a sufficient paper contribution in isolation.
-
-The overlap is even clearer in current software. ArduPilot's official Gazebo integration already
-includes a fixed-wing Zephyr model and lockstep JSON exchange, while PX4's current Gazebo path
-includes conventional fixed-wing models and lockstep simulation. Project AirSim provides
-deterministic stepping and PX4 lockstep for its supported vehicles. PteroSim, a proprietary 2026
-entrant, markets Unreal Engine 5, six-degree-of-freedom fixed-wing and VTOL models, and both PX4 and
-ArduPilot SITL. PteroSim's performance and fidelity statements are vendor claims rather than
-peer-reviewed evidence, but its feature list makes the competitive point: connecting a fixed-wing
-plant, Unreal, and two autopilots is not by itself a research result.
-
-### Unreal is valuable, but it is usually the visual and scenario layer
-
-AirSim established the familiar combination of Unreal rendering, vehicle APIs, synthetic sensors,
-and PX4/ArduPilot connectivity. Microsoft's repository now directs users to successors rather than an
-actively developed original platform. Colosseum moved the design to Unreal Engine 5 but was archived
-on 11 July 2026. Cosys-AirSim continues the ecosystem with newer Unreal support and richer sensing,
-while the original JSBSim project itself ships an open Unreal reference application. AeroSim takes a
-more general co-simulation approach with FMI, middleware, and swappable Unreal or Omniverse rendering.
-
-Academic work uses these pieces primarily for environment, perception, and mission research. A 2025
-IFAC paper combines Unreal Engine 5, AirSim, ROS 2, ArduPilot, and image-based solar-plant inspection
-([Andrade et al., 2025](https://doi.org/10.1016/j.ifacol.2025.09.198)). A 2025 DASC paper combines
-Unreal, Cesium, Colosseum, and PX4 SITL for urban manned–unmanned formation experiments
-([Lee, Kim, and Lee, 2025](https://doi.org/10.1109/DASC66011.2025.11257249)). RflyUT-Sim combines
-Unreal-based scenes with a much broader traffic, communication, fault, and low-altitude operations
-framework ([Li et al., 2025, preprint](https://arxiv.org/abs/2512.24112)).
-
-The emerging architecture also supports separating visual fidelity from dynamics. Unreal Robotics
-Lab embeds MuJoCo as the physics authority while Unreal handles rendering and scene construction
-([Embley-Riches et al., ICRA 2026](https://arxiv.org/abs/2504.14135)). That is conceptually close to
-this project's separation between an inspectable vehicle model and Unreal's world. The separation is
-good design, but it must be quantified: rendering load, tick scheduling, coordinate conversion, and
-real-time coupling must not silently change the experiment.
-
-Therefore, “an Unreal fixed-wing simulator” is not a safe novelty claim. A better claim is a verified
-fixed-wing experiment whose dynamics contract remains measurable across headless and Unreal runtimes.
-
-### Fixed-wing research is raising the validation bar
-
-The most relevant 2025–2026 fixed-wing work is not satisfied with a plausible coefficient table.
-Researchers are deriving models from aerodynamic tools, identifying them from flight data, validating
-modal behavior, and quantifying uncertainty.
-
-- Cavalheiro and Guerreiro automate an AVL-to-Gazebo aerodynamic pipeline and synchronize PX4 and
-  simulator parameters. This means that coefficient generation and PX4/Gazebo model deployment are
-  already active publication territory
-  ([2025](https://doi.org/10.1109/YEF-ECE66503.2025.11117433)).
-- Matt et al. combine open-loop and closed-loop flight data to identify small flying-wing dynamics,
-  including phugoid behavior and closed-/broken-loop frequency-response checks
-  ([2025](https://doi.org/10.2514/1.C038147)).
-- Løw-Hansen et al. identify a Skywalker X8 model using estimated aerodynamic angles and a
-  stability-frame formulation intended to ease comparison across models
-  ([2025](https://doi.org/10.1007/s13272-025-00816-3)).
-- Figueira et al. identify nonlinear aero-propulsive coupling from limited flight data and validate
-  predictive behavior on out-of-sample maneuvers
-  ([2025](https://doi.org/10.2514/1.C037964)).
-- Jayanti et al. compare CFD-derived six-degree-of-freedom dynamics with three flight datasets and
-  explicitly evaluate longitudinal and lateral modes. Residual errors are traced to coefficients,
-  assumptions, and initial-condition mismatch rather than hidden behind trajectory plots
-  ([2026](https://doi.org/10.3311/PPtr.41190)).
-- Siswantara et al. combine unsteady overset CFD, system identification, and flight telemetry for a
-  Skywalker 1800 longitudinal model
-  ([2026, early access](https://doi.org/10.1016/j.taml.2026.100702)).
-
-FalconWing raises the bar from another direction: it releases an ultralight fixed-wing platform,
-identifies nonlinear dynamics from real flight, builds a photorealistic world from real imagery, and
-demonstrates zero-shot vision-only landing on hardware
-([Miao et al., 2025 preprint/workshop](https://arxiv.org/abs/2505.01383)). Its flight envelope and
-task are narrow, but it shows why an open simulator is much stronger when it closes the loop with a
-physical aircraft and a concrete research result.
-
-For this repository, a generic educational Aerosonde model can support code verification and
-benchmark development. It cannot support claims about an actual Aerosonde's behavior without new
-data and parameter provenance.
-
-The evidence culture is also moving toward reusable datasets. García-Gascón et al. publish 240
-fixed-wing missions and more than 32 hours of synchronized telemetry, mission definitions, and
-parameter snapshots across PX4 and INAV aircraft
-([2026](https://doi.org/10.1038/s41597-026-06716-3)). That collection is not aerodynamic ground truth,
-but it is a useful model for the provenance and packaging expected of a public benchmark.
-
-### Digital-twin language now implies a physical relationship
-
-Recent reviews distinguish a simulation model from a dynamic twin that is synchronized with and
-updated from a physical counterpart. Reviews of drone and advanced-air-mobility twins identify
-sim-to-real error, standardization, consistency, verification, certification, and continuous update
-as unresolved problems ([Moon, 2025](https://journal.kci.go.kr/kiots/archive/articleView?artiId=ART003259737);
-[Zhang et al., 2025](https://doi.org/10.3390/drones9060394)).
-
-Valencia et al. combine ROS/Gazebo, ArduPilot, reconstructed terrain, and fixed-wing and multirotor
-flight logs from Andean missions, then compare simulated and physical positioning
-([2025](https://doi.org/10.1007/s10846-025-02276-7)). Guevara et al. explicitly combine model-,
-hardware-, and experiment-based validation in a UAV twin methodology
-([2025 preprint](https://doi.org/10.2139/ssrn.5145160)). These works reinforce a useful vocabulary
-rule: until a particular physical aircraft supplies calibration and validation data, this project is
-a **simulation and benchmark platform**, not that aircraft's digital twin.
-
-NASA and engineering V&V guidance likewise frame credibility as an application-specific accumulation
-of code verification, solution verification, validation, and uncertainty quantification—not as a
-property conferred by a renderer or a single reference comparison
+NASA/FAA and ABS guidance describe credibility as application-specific code
+verification, solution verification, validation, and uncertainty
+quantification
 ([NASA/FAA, 2026](https://ntrs.nasa.gov/api/citations/20260001729/downloads/NASA-TM-20260001729.pdf);
 [ABS, 2024](https://ww2.eagle.org/content/dam/eagle/rules-and-guides/current/design_and_analysis/348-guidance-notes-on-verification-and-validation-of-models%2C-simulations%2C-and-digital-twins-2024/348-vandv-gn-nov24.pdf)).
 
-### Learning and differentiable simulators are advancing quickly
+The repository is a simulator and model test bench. It is not a digital twin
+of the Aerosonde or Otter examples.
 
-The learning literature is moving toward fast batched dynamics, differentiability, and hybrid
-physics/data models. Zhang et al. demonstrate real-world agile flight trained through differentiable
-first-principles physics, although their training model is intentionally a simple point mass
-([2025](https://doi.org/10.1038/s42256-025-01048-0)). Michek, Mehta, and Huebsch use
-physics-informed neural networks for flight-dynamics parameter estimation
-([2025](https://doi.org/10.2514/1.J063991)), while Harp et al. use a physics-informed Gaussian-process
-mean and real T-38 data to estimate aerodynamic behavior with uncertainty
-([2025 preprint; 2026 journal version](https://arxiv.org/abs/2501.01000)).
+### Learning does not remove the need for model checks
 
-Fixed-wing learning platforms are appearing as well. FALCON-S proposes GPU-batched six-degree-of-
-freedom fixed-wing dynamics, actuator and sensor effects, disturbances, and ground effect, but its
-ICLR 2026 submission was withdrawn and should be treated as a preprint rather than peer-reviewed
-evidence ([OpenReview](https://openreview.net/forum?id=BIDlQ5ifz4)). Differentiable aircraft and
-aeroelastic tools also already exist
+Current work includes differentiable flight training
+([Zhang et al., 2025](https://doi.org/10.1038/s42256-025-01048-0)),
+physics-informed parameter estimation
+([Michek et al., 2025](https://doi.org/10.2514/1.J063991)), and Gaussian-process
+aerodynamic models with uncertainty
+([Harp et al., 2025](https://arxiv.org/abs/2501.01000)). Differentiable
+aeroelastic tools are also available
 ([Cea and Palacios, 2025](https://doi.org/10.1016/j.cpc.2025.109547)).
 
-This makes GPU acceleration, reinforcement learning, or automatic differentiation poor first-paper
-novelty claims by themselves. They are better later extensions serving a sharper question such as
-uncertainty-aware controller tuning or differentiable same-plant co-design.
+These methods still need stated frames, limits, training data, held-out cases,
+and uncertainty. A learned residual can complement a readable physical model;
+it does not make an unchecked simulation credible.
 
-## Competitive position
+## Position of this repository
 
-| System or line of work | Strongest capability relevant here | What remains open for this project |
-|---|---|---|
-| JSBSim | Mature configurable aircraft FDM; headless, autopilot, Python, MATLAB, and Unreal paths | A smaller controls-readable benchmark contract and measured multi-runtime/autopilot experiments |
-| PX4 + Gazebo/JSBSim | Strong first-party simulation and academic/ROS 2 ecosystem | Same-plant comparison with ArduPlane and explicit controls-analysis artifacts |
-| ArduPilot SITL + Gazebo/JSBSim | Broad vehicle support, mature ArduPlane, simple external JSON boundary | Modern Unreal fixed-wing path with rigorous timing and headless equivalence evidence |
-| Project AirSim | Deterministic stepping and PX4 lockstep for multirotor and VTOL configurations | Conventional fixed-wing model analysis and same-plant production-autopilot comparison |
-| AirSim descendants | Photorealistic scenes, APIs, sensors, PX4/ArduPilot connectivity | Conventional fixed-wing V&V, trim/linearization, model uncertainty, and experiment traceability |
-| AeroSim | Modular co-simulation, FMI, middleware, renderer independence | Focused open fixed-wing benchmark evidence rather than framework breadth |
-| PteroSim | Proprietary product claiming UE5, fixed-wing/VTOL dynamics, and PX4/ArduPilot SITL | Open equations, independent V&V, reproducible cases, and publishable controlled experiments |
-| ProVANT | Controls-oriented SIL/HIL and modular Gazebo/ROS experiments | Transparent conventional fixed-wing plant and cross-autopilot experiment contract |
-| AeroQT | Lightweight JSBSim/MAVLink simulation and HIL test bench | Deterministic offline analysis, Unreal equivalence, systematic metrics, and uncertainty |
-| FalconWing | Real-to-sim-to-real fixed-wing platform and physical landing result | Broader flight-dynamics envelope, modal validation, and production-autopilot comparison |
-| FALCON-S preprint | GPU fixed-wing learning and ground-effect benchmark | Peer-reviewed validation and a non-learning V&V/autopilot workflow |
-| This repository today | Readable C++ equations, headless RK4, trim, linearization, and a local Unreal/ArduPlane flight | Physical validation, uncertainty, richer actuator/sensor models, and PX4 |
+The repository already provides:
 
-### Why not just use JSBSim?
+- readable C++ fixed-wing and marine equations;
+- headless evaluation and RK4 simulation;
+- fixed-wing trim and discrete linearization;
+- a mirrored-equation JSBSim check and timestep convergence;
+- Unreal/Cesium runs with fixed-step ArduPlane and ArduRover exchange; and
+- simulator truth, controller telemetry, DataFlash, and HTML reports.
 
-This is the most important build-versus-extend question. JSBSim is mature, configurable, actively
-maintained C++, runs headless, has Python and MATLAB paths, connects to both flight-stack ecosystems,
-and already ships an Unreal reference application. Reimplementing a smaller six-degree-of-freedom
-model is not itself a contribution, and a new general-purpose FDM would be difficult to justify.
+The examples are educational plants. There are no measured Aerosonde or Otter
+trajectories, wind-tunnel results, sensor-error models, or uncertainty bounds.
 
-The defensible reason to retain this core is narrower: it is a compact, equation-traceable reference
-plant whose state, integration, linearization, and experiment semantics can be held under direct
-control. JSBSim should remain a reference and possible alternate plant, not be framed as an obsolete
-competitor. The project should measure whether its smaller core actually improves auditability,
-linear-model extraction, deterministic replay, or cross-runtime equivalence. If it cannot demonstrate
-one of those advantages, the benchmark would be stronger built on JSBSim than beside it.
+JSBSim remains the mature general-purpose fixed-wing FDM. The smaller core here
+is retained because its equations, state update, and linearization fit in a
+compact reviewable code path. If a study needs JSBSim's broader aircraft,
+propulsion, ground, or systems support, using JSBSim is the simpler choice.
 
-## Where this project can stand out
+The practical contribution today is the working engineering loop:
 
-### 1. Same-plant ArduPlane–PX4 fixed-wing benchmark
+```text
+model parameters -> C++ plant -> headless check -> ArduPilot run -> report
+```
 
-This is the strongest combination of novelty, feasibility, and fit.
+Additional autopilots, model detail, sensors, and experiment infrastructure
+need a specific user case before they add value.
 
-Most platform comparisons change several things at once: simulator, plant, sensor implementation,
-airframe parameters, controller mode, rate, and tuning. That makes it difficult to attribute a result
-to the autopilot. This project can remove those confounders by feeding both flight stacks the same
-plant and realized experiment.
+## Verification labels
 
-RouthSearch demonstrates that cross-stack testing is already scientifically productive: it evaluated
-PID parameter safety across ArduPilot and PX4 and reported bugs in both. Its executions used the
-stacks' respective simulators, so the plant was not the controlled variable
-([Wang et al., 2025](https://doi.org/10.1145/3728904)). A fixed-wing same-plant study can improve that
-experimental control, especially if it adds formal safety oracles, metamorphic cases, or automated
-test generation rather than only comparing tracking plots.
-
-The scientific contribution should be the protocol, cases, measurements, and artifacts—not a claim
-that one autopilot is universally better. Each autopilot should receive a documented, competent
-tuning process rather than a comparison of arbitrary defaults.
-
-Minimum scenario families:
-
-- straight-and-level trim, commanded airspeed and altitude changes, turns, and waypoint tracking;
-- longitudinal and lateral doublets, chirps, or multisines;
-- deterministic gust/turbulence realizations and aerodynamic-parameter perturbations;
-- actuator lag, rate limit, saturation, bias, and partial-loss cases;
-- airspeed, IMU, GPS, and timing errors introduced at one explicitly named boundary; and
-- duplicate, delayed, missing, and reordered simulator/autopilot packets.
-
-Minimum outputs:
-
-- tracking error, settling time, overshoot, control activity, saturation time, and failure recovery;
-- estimator error separated from plant state;
-- timing jitter, missed steps, real-time factor, and run-to-run dispersion;
-- every resolved controller parameter and firmware revision; and
-- a complete case bundle containing initial state, commands, realized disturbances, signals, stop
-  reason, metrics, and provenance.
-
-### 2. A formal verification and validation ladder
-
-The project should label evidence by what it proves:
+Use the following terms for results:
 
 ```text
 equation and invariant tests                 code verification
-        |
-JSBSim mirrored-equation comparison          independent implementation check
-        |
-timestep and linearization convergence       numerical/solution verification
-        |
-headless versus Unreal wrench comparison     adapter and frame verification
-        |
-open-loop trajectory and modal comparisons   runtime integration evidence
-        |
-ArduPlane and PX4 benchmark cases             closed-loop application evidence
-        |
-held-out wind-tunnel or flight data           physical model validation
-        |
-parameter/posterior propagation               uncertainty quantification
+mirrored-equation reference comparison       implementation comparison
+timestep convergence                         solution verification
+Unreal/controller state-transfer checks      runtime integration check
+wind-tunnel or held-out flight data           physical validation
+parameter propagation                         uncertainty quantification
 ```
 
-Publishing the ladder, its machine-readable acceptance criteria, and the evidence artifacts can be a
-contribution because current simulator papers often use “high fidelity” without identifying which
-layer was actually tested.
+The JSBSim fixture implements the same educational equations through another
+evaluator. Agreement catches code, frame, sign, unit, normalized-rate, and
+reference-point errors. It is not independent aerodynamic validation.
 
-### 3. Quantify when model fidelity changes a controls conclusion
+## Terminology
 
-Rather than attempting the most detailed model possible, test which omitted effects change the
-answer to a declared controls question. Candidate ablations are actuator dynamics, propeller–airframe
-coupling, nonlinear stall behavior, gust spectra, sensor latency, ground effect, and parameter
-uncertainty.
-
-The useful result is not “model B is more realistic.” It is, for example, “controller ranking,
-stability margin, saturation rate, or recovery envelope changes beyond a stated threshold when this
-effect is included.” That connects flight-model fidelity directly to research decisions.
-
-### 4. Flight-data calibration and uncertainty propagation
-
-This is the strongest eventual journal contribution and the highest validation burden. Collect
-designed excitations on a known small fixed-wing aircraft, jointly estimate wind, actuator, propulsion,
-and aerodynamic uncertainty, and evaluate on flights withheld from calibration. Propagate the
-resulting parameter ensemble through both autopilots and report distributions—not only nominal lines—
-for modes, tracking, saturation, and failure probability.
-
-The current readable coefficient model is a good prior or mean model. A physics-informed Gaussian
-process or learned residual could later model only the discrepancy, preserving symmetry, zero-load at
-zero dynamic pressure, frame conventions, and interpretable derivatives. A black-box replacement for
-the entire plant would sacrifice a major project advantage.
-
-### 5. Controls-readable research software
-
-Controls readability is not enough for a major dynamics paper, but it is a real adoption advantage.
-The same symbol names, SI units, NED/FRD frames, equation staging, trim definition, Jacobian convention,
-and signal semantics should appear in code, documentation, cases, and results. MATLAB users should be
-able to audit the equations and consume the linear models without reverse-engineering Unreal types or
-C++ application plumbing.
-
-This strengthens every other contribution and could support a software paper once the system has a
-stable release, external research use, archival examples, automated installation, and a DOI-backed
-artifact.
-
-The artifact should make reproduction a first-class research output. Teetaert et al. identify shared,
-repeatable benchmarks and remote sim-to-real access as mechanisms for improving robotics
-reproducibility ([2025](https://doi.org/10.1109/MRA.2025.3527291)). For this project, the corresponding
-deliverable is smaller and more controllable: immutable case manifests, pinned firmware and
-parameters, saved disturbances, replayable logs, declared tolerances, and one command that regenerates
-each table or figure.
-
-## ArduPilot or PX4?
-
-### Recommendation
-
-**Implement ArduPlane first; do not make ArduPilot the permanent scientific boundary. Add PX4 second
-as a controlled comparison.**
-
-ArduPilot is the right first vertical slice because:
-
-- ArduPlane is operationally mature and fixed-wing support is central to the project;
-- the documented JSON/UDP backend is deliberately easy for an external physics simulator to implement;
-- the current timing, PWM, sensor, and Docker design already targets that interface; and
-- completing one real path is more valuable than maintaining two half-built adapters.
-
-PX4 is the right second backend because:
-
-- its Gazebo, ROS 2, offboard-autonomy, and academic ecosystem is highly visible;
-- official simulation support includes multiple fixed-wing and VTOL paths;
-- its BSD licensing and modular interfaces are attractive to research and commercial users; and
-- holding the plant constant turns a second adapter into a scientific comparison rather than a feature.
-
-Supporting only ArduPilot could still produce a useful open-source tool and an ArduPlane-focused case
-study. It gives up the clearest comparative research question and makes the work easier to dismiss as
-one more integration. Supporting both before the ArduPlane path is validated would create unnecessary
-schedule risk. The sequence—not an either/or choice—is the answer.
-
-Architecturally, neither autopilot should leak into `uvd_core`, aircraft files, atmosphere, trim,
-linearization, or generic case semantics. Adapter-specific configuration can remain adapter-specific.
-The common boundary should express physical effectors going into the plant and timestamped simulated
-measurements coming out.
-
-## Naming
-
-The project has adopted `UnrealVehicleDynamics`, matching the existing `uvd` executable and its
-intended scope across aerial and marine vehicles. It avoids making ArduPilot the permanent identity
-or a future PX4 adapter look like an exception. The name still has two important caveats:
-
-1. “Unreal” ties the identity to a renderer even though the strongest research contribution is the headless
-   experimental contract.
-2. Unreal is a third-party name. Epic's current EULA grants no general trademark right
-   beyond required notices and directs further trademark use to its branding process
-   ([Epic EULA](https://www.unrealengine.com/eula/unreal)). This is a branding risk to review, not a
-   legal conclusion.
-
-The naming implications are therefore:
-
-- keep `uvd` as the CLI;
-- describe the artifact in papers with a precise, non-grandiose subtitle such as “a deterministic,
-  controls-oriented vehicle simulation and validation framework”;
-- keep the implementation autopilot-neutral while accurately saying “ArduPlane adapter” until PX4
-  passes the same contract; and
-- review Epic's current trademark guidance before the first public archival release.
-
-## Recommended publication program
-
-### Stage 1: validated software foundation
-
-Finish the current headless benchmark, document a declared operating envelope, and add the Unreal and
-ArduPlane paths. Publish versioned cases, numerical convergence, force/moment comparison, trim and mode
-tables, open-loop excitations, deterministic replay, and headless/Unreal equivalence measurements.
-
-This is suitable for a research-software venue such as JOSS or SoftwareX only when the repository has a
-stable public release, archival DOI, complete installation path, examples, and evidence of research
-use. An aerospace simulation conference paper is another reasonable first outlet. Do not claim
-physical Aerosonde validation.
-
-### Stage 2: same-plant autopilot benchmark
-
-Add PX4 without changing the plant or cases. Publish the benchmark protocol, tuned configurations,
-scenario corpus, cross-autopilot results, and complete run artifacts. ICUAS, AIAA SciTech/Aviation,
-or a simulation and information-systems venue are plausible targets; an expanded study could fit the
-Journal of Aerospace Information Systems.
-
-### Stage 3: calibrated model and uncertainty
-
-Partner with a lab or obtain access to an instrumented fixed-wing aircraft. Use designed open- and
-closed-loop excitations, calibrate on a subset, and validate on held-out flights. Propagate uncertainty
-through both closed loops. This is the path toward the Journal of Aircraft, Journal of Guidance,
-Control, and Dynamics, or CEAS Aeronautical Journal.
-
-### Stage 4: application paper
-
-Use Unreal and Cesium for a problem that actually needs them: terrain-following safety, autonomous
-landing, perception in geospatial scenes, wind-aware inspection, or ship/shore operations. The
-application—not rendering itself—must create the research question.
-
-Marine work should remain out of the first fixed-wing paper. HoloOcean 2.0 and current ASV simulators
-already combine Unreal-class rendering, Fossen-style models, sensors, and ROS. A later marine paper
-would need domain-standard validation such as decay, RAO, turning-circle, or zig-zag evidence, or a
-genuinely shared cross-domain experiment contract.
-
-## Claims to avoid
-
-| Claim | Use only when |
+| Term | Required qualification |
 |---|---|
-| “High fidelity” | The variable, envelope, reference, uncertainty, and quantitative error are stated |
-| “Validated against JSBSim” | Clarified as implementation/reference agreement, not physical validation |
-| “Digital twin” | A particular physical asset supplies continuing calibration or synchronization data |
-| “Autopilot agnostic” | At least two autopilots pass the same automated contract |
-| “Deterministic simulator” | The exact deterministic boundary is named; full SITL scheduling variance is measured separately |
-| “Same experiment” | Commands, realized disturbances, sensors, timing, initial state, parameters, and scoring are identical |
-| “First” | A formal, current novelty search supports the exact qualified statement |
-| “Better autopilot” | Tuning, modes, estimator assumptions, failures, and statistical uncertainty make the comparison fair |
+| high fidelity | variable, envelope, reference, uncertainty, and measured error |
+| validated against JSBSim | implementation agreement or physical validation must be distinguished |
+| digital twin | identify the physical asset and its calibration or synchronization data |
+| deterministic | name the deterministic boundary and separate SITL scheduling variance |
+| same experiment | match commands, disturbances, sensors, timing, state, parameters, and scoring |
+| better controller | document tuning, mode, estimator assumptions, failures, and uncertainty |
+| first | support the exact statement with a current formal search |
 
-## Concrete next research milestones
-
-1. Freeze a versioned fixed-wing benchmark specification and declared validity envelope.
-2. Record coefficient provenance and distinguish educational parameters from measured ones.
-3. Publish reference force/moment grids, trims across airspeed, discrete linear models, modal tables,
-   doublets, and timestep-convergence results.
-4. Add actuator dynamics and a deterministic, saved gust realization before comparing controllers.
-5. Complete the ArduPlane adapter and quantify packet, sensor, and zero-order-hold timing.
-6. Prove headless and Unreal matched-state wrench agreement, then measure trajectory convergence and
-   sensitivity to rendering load.
-7. Add PX4 through the same physical boundary and run the identical scenario corpus.
-8. Archive every release and benchmark result with exact firmware, compiler, configuration, and data
-   provenance.
-9. Obtain real fixed-wing data or a research partner before using digital-twin or physical-fidelity
-   language.
-
-## Selected references and current software sources
+## Selected references and software
 
 ### Peer-reviewed and proceedings sources
 
@@ -595,30 +279,29 @@ genuinely shared cross-domain experiment contract.
   [arXiv:2510.01041](https://arxiv.org/abs/2510.01041).
 - Bolz, W., Faber, F., Lork, J., Cella, M., Zendel, O., and d'Apolito, F. “An Integrated Testbed for
   Mission-Level Autonomy Evaluation in Evolving Disaster Scenarios with Fixed-Wing Swarms.” ICUAS
-  2026, 696–703. No public manuscript or indexed DOI was found; evidence is limited to the
+  2026, 696–703. Evidence is limited to the
   [official program](https://controls.papercept.net/conferences/scripts/rtf/ICUAS26_ContentListWeb_3.html).
-- “FALCON-S: Fixed-Wing Aerodynamics and Learning Control Suite.” Withdrawn ICLR 2026 submission;
-  retained only as evidence of an emerging direction.
+- “FALCON-S: Fixed-Wing Aerodynamics and Learning Control Suite.” Withdrawn ICLR 2026 submission.
   [OpenReview](https://openreview.net/forum?id=BIDlQ5ifz4).
 
-### Official software and standards sources
+### Official software and standards
 
 - [ArduPilot SITL overview](https://ardupilot.org/dev/docs/sitl-simulator-software-in-the-loop.html),
   [external JSON interface](https://ardupilot.org/dev/docs/sitl-with-JSON.html),
   [JSBSim integration](https://ardupilot.org/dev/docs/sitl-with-jsbsim.html), and
   [Gazebo plugin](https://github.com/ArduPilot/ardupilot_gazebo).
 - [PX4 simulation overview](https://docs.px4.io/main/en/simulation/),
-  [current Gazebo integration](https://docs.px4.io/v1.17/en/sim_gazebo_gz/), and
-  [legacy/community JSBSim integration](https://docs.px4.io/v1.12/en/simulation/jsbsim/).
+  [Gazebo integration](https://docs.px4.io/v1.17/en/sim_gazebo_gz/), and
+  [JSBSim integration](https://docs.px4.io/v1.12/en/simulation/jsbsim/).
 - [JSBSim](https://github.com/JSBSim-Team/jsbsim) and its
   [Unreal reference application](https://github.com/JSBSim-Team/jsbsim/blob/master/UnrealEngine/README.md).
 - [Microsoft AirSim](https://github.com/microsoft/AirSim),
-  [Colosseum archive](https://github.com/CodexLabsLLC/Colosseum), and
+  [Colosseum](https://github.com/CodexLabsLLC/Colosseum), and
   [Cosys-AirSim](https://github.com/Cosys-Lab/Cosys-AirSim).
 - [AeroSim](https://github.com/aerosim-open/aerosim) and its
   [architecture documentation](https://aerosim.readthedocs.io/en/latest/).
 - [Project AirSim](https://github.com/iamaisim/ProjectAirSim) and its
   [simulation clock documentation](https://iamaisim.github.io/ProjectAirSim/development/scene/sim_clock_internal.html).
-- [PteroSim](https://github.com/PteroLabsAI/PteroSim-UAV-Simulator) (proprietary vendor claims only).
+- [PteroSim](https://github.com/PteroLabsAI/PteroSim-UAV-Simulator).
 - [NASA/FAA VVUQ report, 2026](https://ntrs.nasa.gov/api/citations/20260001729/downloads/NASA-TM-20260001729.pdf)
-  and [ABS model/simulation/digital-twin V&V guidance, 2024](https://ww2.eagle.org/content/dam/eagle/rules-and-guides/current/design_and_analysis/348-guidance-notes-on-verification-and-validation-of-models%2C-simulations%2C-and-digital-twins-2024/348-vandv-gn-nov24.pdf).
+  and [ABS V&V guidance, 2024](https://ww2.eagle.org/content/dam/eagle/rules-and-guides/current/design_and_analysis/348-guidance-notes-on-verification-and-validation-of-models%2C-simulations%2C-and-digital-twins-2024/348-vandv-gn-nov24.pdf).

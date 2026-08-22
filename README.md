@@ -1,136 +1,121 @@
 # UnrealVehicleDynamics
 
-UnrealVehicleDynamics is a vehicle-dynamics and controls simulator built around
-Unreal Engine and a shared C++ dynamics core. It targets aerial and marine
-vehicles and integrates external control systems, starting with ArduPilot SITL.
-The first vehicle is a fixed-wing Aerosonde; boat support follows.
+UnrealVehicleDynamics runs C++ vehicle models headlessly or inside Unreal
+Engine with Cesium and ArduPilot SITL. The repository includes two examples:
 
-The headless `uvd` executable supports model evaluation, simulation, trim, and
-linearization. Aircraft parameters and run settings live in JSON, so controls
-work does not require editing the model source.
+- a BYU/MAVSim Aerosonde controlled by ArduPlane; and
+- a Fossen Otter surface vessel controlled by ArduRover.
 
-The headless tools compare the fixed-wing model with JSBSim, and Unreal runs it
-with ArduPlane. See [docs/AERO.md](docs/AERO.md) for the aircraft model.
-
-## Architecture
-
-The shared C++ core answers one question: **given the vehicle state, controls,
-and environment, what forces and moments act on the vehicle?** It contains the
-engineering equations. It does not render anything.
+Both models use SI units, North-East-Down world axes, and Forward-Right-Down
+body axes.
 
 ```text
-controller command
-        |
-        v
-shared C++ force model
-        |
-        | force + moment
-        v
-motion integrator
-        |
-        | new position, velocity and attitude
-        +------> Unreal renders the vehicle
-        +------> simulated sensors feed the controller
+ArduPilot PWM
+      |
+      v
+shared C++ model -> committed vehicle state -> ArduPilot sensors
+      |                       |
+      +-> headless CSV        +-> Unreal and Cesium
 ```
 
-Unreal is the main simulation runtime, not a visualizer bolted onto a separate
-solver. The shared C++ sources compile directly into the Unreal plugin. The
-current path loads the run configuration and lets Unreal own the fixed physics
-clock, world, actor, and collisions while the core supplies the vehicle math.
-When Chaos owns motion, the Unreal component gives the core a state in standard
-SI and NED/FRD coordinates on each physics tick. The core returns a body force
-and moment and the component applies it once. ArduPlane receives the committed
-state and returns PWM commands through its JSON backend.
+The shared core contains the vehicle equations. It has no Unreal, networking,
+JSON, or process code.
 
-The headless CLI replaces Chaos with the core's built-in motion solver. That
-solver turns forces and moments into the next vehicle state using a standard
-fourth-order Runge-Kutta method, commonly called RK4. With no engine startup, it
-can quickly evaluate, simulate, trim, and linearize the same model. This is the
-engineering test bench for the Unreal runtime: the same state reaches the same
-force model, and the RK4 trajectory can be checked as the timestep is refined.
+The aircraft model returns body force and moment; Chaos advances its rigid
+body. The Otter model has a coupled six-axis mass matrix, so its core RK4
+solver advances the state and Unreal renders the committed pose. In both cases
+Unreal owns the fixed simulation clock and exchanges state and PWM with
+ArduPilot once per accepted controller frame.
 
-Chaos owns motion when its rigid-body model can represent the problem, as in
-the first aircraft. The Otter's coupled marine mass cannot be represented that
-way, so its core integrator owns the state and Unreal renders the committed
-pose. The tool is still native to Unreal: configuration, controls, sensors,
-maps, timing, logging, replay, and visualization stay in the same workflow.
-Only the solver responsible for advancing the state changes.
+The `uvd` CLI compiles the same model sources. It evaluates and simulates both
+plants without starting Unreal. The Aerosonde also provides trim and local
+linearization.
 
-Water is the hardest version of this contract and may justify a paper by itself.
-The first demo uses one Unreal Water wave definition for both the visible
-surface and buoyancy queries. Before that result is accepted, sampled water
-heights must remain on the rendered surface through pause, reset, replay, and
-different render and physics rates. A later seakeeping model will require richer
-wave and hull physics; if stock Unreal Water cannot reproduce it, a
-project-owned render path must consume the same saved wave components, phase,
-and simulation timestamp as the force model. A visible crest where the physics
-sees a trough is a failed simulation.
+## Headless use
 
-## Quick start
+Install the prerequisites in [INSTALL.md](docs/INSTALL.md), then build:
 
-Install the host tools as described in [INSTALL.md](docs/INSTALL.md).
-Build the headless simulator:
-
-```bash
+```sh
 cmake -S . -B build
 cmake --build build
 ```
 
-Then run a case from the repository root:
+Evaluate or simulate either model:
 
-```bash
+```sh
 build/uvd evaluate examples/run.json
-build/uvd simulate examples/run.json --duration 10 --output runs/headless.csv
+build/uvd simulate examples/run.json --duration 10 --output runs/aerosonde.csv
+
+build/uvd evaluate examples/otter-run.json
+build/uvd simulate examples/otter-run.json --duration 10 --output runs/otter.csv
+```
+
+Fixed-wing operating-point analysis is available separately:
+
+```sh
 build/uvd trim examples/run.json
 build/uvd linearize examples/run.json --output runs/linear-model.json
 ```
 
-With Unreal Engine 5.8, Cesium for Unreal, Xcode on macOS, and Docker installed,
-run the live Cesium/Chaos/ArduPlane case:
+## Unreal demonstrations
 
-```bash
+Store the Cesium ion token in the ignored local environment file:
+
+```sh
 cp .env.example .env
-# Put CESIUM_ION_TOKEN=... in .env, then:
-./run.py
+# Edit .env and set CESIUM_ION_TOKEN.
 ```
 
-The launcher builds the shared dependencies and Unreal plugin, starts the
-ArduPlane container, opens the full Unreal window, and cleans both processes up
-when either exits. The Cesium token stays in the ignored local `.env` file.
-Use `1`–`4` for chase, orbit, onboard, and side cameras. Right-drag to orbit,
-scroll to zoom, use `F` to find the aircraft, and press Space to pause while
-continuing to move the camera.
-After a bounded FBWA roll run, it writes Unreal truth, ArduPlane telemetry and
-DataFlash, and a self-contained HTML report under `runs/`. The report verifies
-the fixed-rate controller exchange and separates plant state from its estimate.
+Run either closed-loop demonstration:
 
-The two lightweight numerical checks are:
+```sh
+./run.py          # Aerosonde + ArduPlane FBWA
+./run.py otter    # Otter + ArduRover ACRO
+```
 
-```bash
+`run.py` builds the core and Unreal plugin with hot reload disabled, builds the
+selected ArduPilot Docker image, opens the game window, and stops both
+processes when the run ends. Results are written under `runs/`:
+
+```text
+truth.csv       simulator state
+exchange.csv    fixed-step controller exchange
+telemetry.csv   ArduPilot telemetry
+ardupilot/      DataFlash and SITL files
+report.html     plots and timing checks
+```
+
+Use `1`–`4` for chase, orbit, onboard, and side cameras. Right-drag orbits,
+the scroll wheel zooms, `F` reacquires the vehicle, and Space pauses the model
+while leaving the camera active.
+
+## Model checks
+
+```sh
 python3 validation/timestep_convergence.py
-python3 validation/jsbsim_compare.py
+python3 validation/jsbsim_compare.py --samples 50
 ```
+
+The JSBSim check is optional. It compares the fixed-wing aerodynamic equations
+with the repository fixture; it does not validate a physical Aerosonde.
 
 ## Repository layout
 
 ```text
-core/       fixed-wing equations, rigid-body dynamics, and integration
-cli/        small headless engineering test bench
-unreal/     Unreal host project and Cesium/Chaos/ArduPilot plugin
-ardupilot/  ArduPlane container and FBWA startup helper
-validation/ optional JSBSim comparison and timestep-convergence check
-examples/   aircraft parameters and the v1 run configuration
-docs/       aircraft, Unreal, water, and C++ design details
+core/       fixed-wing and marine equations and integrators
+cli/        headless evaluation and simulation
+unreal/     Unreal project and vehicle plugin
+ardupilot/  ArduPlane and ArduRover containers, sessions, and reports
+validation/ numerical and reference-model checks
+examples/   model parameters and run files
+docs/       model, runtime, and research notes
 ```
 
-The v1 currently flies the Aerosonde locally with UE 5.8.1, Cesium, Chaos, and
-ArduPlane stabilizing the aircraft in Fly By Wire A (FBWA) mode. FBWA exercises
-ArduPlane's basic roll and pitch controllers without requiring a mission,
-autonomous navigation, takeoff, or landing. The CLI compiles the same force
-model and provides the fast headless path for model inspection and controls
-work. This is a useful working simulation, not yet a claim of physical
-Aerosonde fidelity; see
-[ARDUPILOT.md](docs/ARDUPILOT.md) for the first engineering push.
+The Aerosonde is an educational coefficient model used for an air-started
+FBWA response run. The Otter is an educational port of the MSS calm-water
+model used for an ACRO speed-and-turn run. Their equations and source limits
+are documented in [AERO.md](docs/AERO.md) and
+[ARDUROVER.md](docs/ARDUROVER.md).
 
 ## License
 

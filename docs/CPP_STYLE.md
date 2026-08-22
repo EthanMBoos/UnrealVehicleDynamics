@@ -1,9 +1,8 @@
 # Controls-oriented C++ style
 
-The [Google C++ Style Guide](https://google.github.io/styleguide/cppguide.html) is the repository
-baseline. Run clang-format with the checked-in `.clang-format`, which selects its Google preset.
-The core is engineering software first, so the additions and exceptions below make the governing
-equations, frames, and units easy to audit against the model documentation.
+The [Google C++ Style Guide](https://google.github.io/styleguide/cppguide.html) and the checked-in
+`.clang-format` are the baseline. The rules below preserve equation order, frames, and units in the
+vehicle-model code.
 
 ## Project adaptations
 
@@ -58,8 +57,8 @@ Conversions that expose coefficients must name their ordering and have a convent
 - Use conventional coefficient names inside equation code: `C_L`, `C_D`, `C_Y`, `C_ell`, `C_m`,
   and `C_n`.
 - Prefer named domain structs over vector indices for physically different values.
-- Short mathematical names such as `C`, `d`, `qbar_S_N`, and `R_body_to_ned` are appropriate within
-  a small equation-focused scope. Public interfaces use descriptive names.
+- Short mathematical names such as `C`, `d`, `qbar_S_N`, and `R_body_to_ned` are local to the
+  corresponding equation. Public interfaces use descriptive names.
 - At an equation boundary, bind descriptive state members to the symbols used in the written model,
   such as `alpha`, `beta`, `delta_e`, and `V_a`. This keeps the equation visually comparable to its
   reference without leaking abbreviated names into the public interface.
@@ -75,6 +74,6 @@ Unreal types stop in the Unreal component; the core uses SI and NED/FRD througho
 
 ## Formatting and verification
 
-Format C++ with the repository `.clang-format`; do not hand-format around it. Exercise the affected
-CLI operation. Changes to the aircraft equations or integrator should also run trim, linearization,
-timestep convergence, and the optional JSBSim comparison as appropriate.
+Format C++ with the repository `.clang-format` and exercise the affected CLI operation. Aircraft
+equation or integrator changes also run trim, linearization, timestep convergence, and the optional
+JSBSim comparison. Marine equation or integrator changes run the `fossen_otter` CTest.

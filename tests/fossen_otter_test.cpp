@@ -181,11 +181,11 @@ void convergence_test() {
 }
 
 void mss_derivative_test() {
-  // Reference values were generated from MSS otter.m at commit d7c1e969856f
-  // (source SHA-256
-  // 66c144fea629cee4bea0ad55b62a1bc5e55b46e68ac8e94860ddc7f0aff12248). MSS
-  // shifts its Euler position before computing kinematics, so this test
-  // intentionally compares its physical load terms and nu_dot only.
+  // These values come from MSS otter.m at commit d7c1e969856f (source SHA-256
+  // 66c144fea629cee4bea0ad55b62a1bc5e55b46e68ac8e94860ddc7f0aff12248).
+  // Keeping the reference outputs here checks the C++ port without making
+  // MATLAB, Octave, or an MSS checkout part of the normal build. MSS shifts its
+  // Euler position before computing kinematics, so compare loads and nu_dot.
   const auto evaluate = [](const uvd::Vector6& nu, const uvd::Vector6& eta,
                            double left_speed, double right_speed,
                            double current_speed, double current_direction) {

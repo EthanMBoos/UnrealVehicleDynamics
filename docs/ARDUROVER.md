@@ -1,123 +1,115 @@
-# ArduRover boat direction
+# ArduRover and the Fossen Otter
 
-The first marine push is a powered surface vessel that ArduRover can drive and
-turn in calm water. Station keeping, waves, and engineering seakeeping are
-later experiments; water work is documented in [WATER.md](WATER.md).
+The marine demonstration runs ArduRover against a C++ port of Thor Fossen's
+Otter USV model:
 
 ```text
-public boat model -> C++ plant -> headless maneuvers -> ArduRover experiment
-                                                       |
-                            DataFlash + truth + report
+ArduRover PWM -> left/right shaft commands -> C++ Otter solver
+                                                |
+                                                +-> Unreal pose
+                                                +-> controller state
 ```
 
-## Reference boat
+Launch the closed-loop run with:
 
-Use Thor Fossen's public Otter USV model as the first reference. The Otter is a
-two-meter twin-hull research vessel with two fixed propellers, making it a good
-match for ArduRover's left/right throttle outputs.
+```sh
+./run.py otter
+```
 
-The primary numerical reference is current
-[`otter.m`](https://github.com/cybergalactic/MSS/blob/master/CRAFT/USV/models/otter.m)
-in the MIT-licensed
-[Marine Systems Simulator](https://github.com/cybergalactic/MSS). The older
+For an open-loop Unreal run using the shaft commands in the run file:
+
+```sh
+./run.py otter-open-loop
+```
+
+## Model source
+
+The numerical reference is
+[`otter.m`](https://github.com/cybergalactic/MSS/blob/d7c1e969856f4e98bc2f6ffa466d0abd6ec5d950/CRAFT/USV/models/otter.m)
+from the MIT-licensed
+[Marine Systems Simulator](https://github.com/cybergalactic/MSS). The model
+file records the source commit and SHA-256.
+
+The older
 [Python Otter](https://github.com/cybergalactic/PythonVehicleSimulator/blob/master/src/python_vehicle_simulator/vehicles/otter.py)
-is useful for reading and secondary comparison, but its equations now differ
-from MSS.
+uses different added-mass, cross-flow, payload, and integration choices. It is
+a readable secondary reference; the C++ results are matched to MSS.
 
-The reference includes:
+The port includes:
 
 - six-axis rigid-body and added-mass dynamics;
-- Coriolis, damping, hydrostatic restoring, and water-current terms;
-- twin-propeller placement, saturation, and response lag;
-- different forward and reverse bollard-thrust curves; and
-- mass, payload, center of gravity, inertia, displacement, and draft.
+- Coriolis, damping, cross-flow, hydrostatic, and current loads;
+- separate forward and reverse bollard-thrust curves; and
+- left/right propeller saturation and first-order shaft response.
 
-This is the marine equivalent of the current educational Aerosonde: a public,
-inspectable controls model with executable references. It is not a validated
-digital twin of every physical Otter. Some hydrodynamic terms are engineering
-approximations, while the propeller model includes experimental bollard data.
-Call the model `fossen_otter_educational` and state that limitation plainly.
+The reference describes a two-meter research vessel in calm water. It uses
+small-motion hydrostatics, semi-empirical damping, and bollard thrust that does
+not vary with advance speed. These limits are part of the model.
 
-The source model is six-axis even though the first experiments are planar.
-Begin with surge, sway, and yaw maneuvers in calm water, but do not replace the
-reference equations with hand-tuned maximum-speed and turn-rate gains.
-
-## Reference strategy
-
-Implement the equations and parameters as ordinary C++ in this repository.
-MSS and Python Vehicle Simulator remain optional validation tools, not runtime
-dependencies.
-
-The first checks should compare:
-
-1. mass, added mass, hydrostatics, and equilibrium;
-2. forward and reverse propeller thrust;
-3. matched-state derivatives with and without current;
-4. single- and dual-propeller step responses;
-5. straight acceleration and coast-down; and
-6. differential-thrust turning and zigzag maneuvers.
-
-The C++ solver does not need to copy the reference program's integration
-method. Compare the continuous model at matched states, then check trajectory
-convergence independently.
-
-## Configuration
-
-Keep physical plant data, ArduRover parameters, and the experiment separate:
+## Files and units
 
 ```text
-fossen_otter.json  Otter source scalars for mass, geometry, hydrodynamics,
-                   payload, and propellers; C++ derives its matrices
-rover.parm      ArduRover frame, output mapping, and controller parameters
-run.json        initial state, current, environment, and maneuver
+examples/boats/fossen_otter.json  hull, payload, hydrodynamic, and propeller data
+examples/otter-run.json           state, origin, current, shaft command, and ports
+ardupilot/rover.parm              frame, motor mapping, and reference gains
 ```
 
-The physical file uses SI units, North-East-Down world axes, and
-Forward-Right-Down body axes. It declares the midships body origin and the
-source scalar assumptions. Derived marine matrices stay in C++.
+The runtime uses SI units, NED position, and FRD body velocity. The body origin
+is midships on the centerline. The state also carries actual left and right
+shaft speed in radians per second.
 
-ArduPilot configuration does not belong in the hydrodynamic model. A
-differential-thrust boat normally uses `Throttle Left` and `Throttle Right`;
-`FRAME_CLASS=2` enables boat behavior. Rudder, vectored-thrust, sail, and
-planing craft require different model types rather than optional fields added
-to the Otter file.
+The JSON file stores source scalars. The C++ model derives rigid-body mass,
+added mass, hydrostatic stiffness, damping, equilibrium, and shaft limits. The
+generalized axis order is surge, sway, heave, roll, pitch, yaw.
 
-## Other public references
+Headless inspection uses the same model:
 
-[Virtual RobotX](https://github.com/osrf/vrx) provides the well-known WAM-V,
-public visual assets, configurable thruster layouts, sensors, wind, waves, and
-an Apache-licensed Gazebo implementation. It is a useful independent simulator
-and visual reference. Its default hydrodynamics are deliberately simplified,
-so it is not the primary numerical oracle for the Otter plant.
+```sh
+build/uvd evaluate examples/otter-run.json
+build/uvd simulate examples/otter-run.json --duration 10 --output runs/otter.csv
+ctest --test-dir build --output-on-failure
+```
 
-[ShipMMG](https://github.com/ShipMMG/shipmmg) implements the standard MMG
-hull-propeller-rudder method and supports canonical ship maneuvering work such
-as KVLCC2 cases. It is a useful later test of the plant boundary, but a tanker
-with a rudder is not representative of the first small differential-thrust
-ArduRover vehicle.
+## Unreal state ownership
 
-The public [OtterROS](https://github.com/offroad-robotics/otter_ros) project
-documents a current research workflow around the physical Otter. It is useful
-context for commands and field logs, not a dynamics reference.
+The Otter's coupled 6x6 effective mass cannot be represented by one Chaos
+rigid body. The core RK4 solver advances body and shaft state. Unreal publishes
+that committed state through a kinematic actor; it does not add buoyancy,
+gravity, collision impulses, or another pose update.
 
-## Boundary with water simulation
+The current visual is a generated twin-hull shape over a flat water reference.
+It shows position and attitude from the plant. Waves, contacts, and seakeeping
+are separate work described in [WATER.md](WATER.md).
 
-[WATER.md](WATER.md) currently covers two other problems:
+## ArduRover demonstration
 
-1. a visual Unreal Water and Chaos buoyancy demonstration; and
-2. a later engineering seakeeping solver using six-axis hydrodynamic
-   coefficients, radiation memory, wave excitation, and matching rendered and
-   physical wave phase.
+`FRAME_CLASS=2` selects boat behavior. Servo functions 73 and 74 map the mixed
+outputs to left and right motors. ACRO converts the steering stick to a yaw-rate
+target and the throttle stick to a speed target; see the
+[ArduRover ACRO documentation](https://ardupilot.org/rover/docs/acro-mode.html).
 
-Those remain useful, but they should not block the powered-USV loop. The Otter
-work establishes calm-water propulsion and maneuvering first. Water rendering,
-wave response, maneuvering in waves, planing, and hydrodynamic contact can be
-added only when an experiment needs them.
+The session runs:
 
-## First useful result
+```text
+settle -> speed step -> turn-rate step -> recover -> HOLD
+```
 
-The first result is one bounded ArduRover ACRO maneuver using the Otter model,
-with desired and achieved speed and turn rate, left/right propeller commands,
-simulator truth, ArduRover estimates, and timing health saved together. Open-
-loop straight and turning runs work headlessly before Unreal renders the same
-committed boat state.
+The report plots desired and achieved speed, desired and achieved yaw rate,
+plant truth, motor PWM, saturation time, and horizontal trajectory. Its run
+checks cover finite plant state, all maneuver phases, controller telemetry,
+and fixed-step exchange. Tracking error and saturation are reported as values;
+the reference gains are not presented as a finished tune.
+
+## Current limits
+
+- calm water and horizontal current only;
+- no waves, contacts, planing, wind, rudder, or arbitrary thruster layout;
+- one payload and one reference gain set;
+- one hard-coded ACRO maneuver; and
+- no physical validation against a measured Otter trajectory.
+
+Related public models include
+[VRX/WAM-V](https://github.com/osrf/vrx) for marine robotics simulation and
+[ShipMMG](https://github.com/ShipMMG/shipmmg) for standard hull-propeller-rudder
+maneuvering models. Their vehicle and force assumptions differ from this
+differential-thrust Otter.
