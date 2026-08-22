@@ -19,8 +19,7 @@ they already use; run a repeatable experiment; and leave with native ArduPilot
 logs beside simulator truth.
 
 [AERO.md](AERO.md) documents the current fixed-wing equations and validation.
-[PLANNING.md](PLANNING.md) covers the broader multi-vehicle roadmap. This
-document owns the ArduPilot workflow and near-term implementation order.
+This document owns the ArduPilot workflow and near-term implementation order.
 
 ## Current state
 

@@ -17,5 +17,14 @@ RC3_MAX 2000
 CRUISE_SPEED 1.0
 CRUISE_THROTTLE 35
 ACRO_TURN_RATE 45
+# Visible reference gains for this educational Otter demo. These initially
+# match the bundled firmware defaults; they are the small set a user changes
+# when inspecting the speed and yaw-rate response in the generated report.
+ATC_SPEED_P 0.2
+ATC_SPEED_I 0.2
+ATC_SPEED_FF 0.0
+ATC_STR_RAT_P 0.2
+ATC_STR_RAT_I 0.2
+ATC_STR_RAT_FF 0.2
 GCS_PID_MASK 3
 ARMING_CHECK 0

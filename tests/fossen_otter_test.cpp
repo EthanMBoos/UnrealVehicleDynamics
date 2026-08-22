@@ -73,6 +73,15 @@ void construction_test() {
   expect_true(model.hydrostatic_stiffness.isApprox(
                   model.hydrostatic_stiffness.transpose(), 1e-13),
               "hydrostatic stiffness symmetry");
+
+  uvd::FossenOtterParameters changed_thrust;
+  changed_thrust.maximum_forward_bollard_force_N = 100.0;
+  const uvd::FossenOtterModel changed_model =
+      uvd::make_fossen_otter_model(changed_thrust);
+  expect_near(changed_model.linear_damping(0),
+              -2.0 * changed_thrust.maximum_forward_bollard_force_N /
+                  changed_thrust.maximum_forward_speed_mps,
+              1e-12, "surge damping follows configured bollard thrust");
 }
 
 void direction_test() {
@@ -126,6 +135,22 @@ void unloaded_equilibrium_test() {
   expect_true(output.valid, "unloaded equilibrium evaluation valid");
   expect_true(output.velocity_rate_body.norm() < 1e-12,
               "unloaded equilibrium acceleration");
+}
+
+void loaded_equilibrium_test() {
+  const uvd::FossenOtterModel model =
+      uvd::make_fossen_otter_model(uvd::FossenOtterParameters{});
+  uvd::OtterState state;
+  state.body.position_ned_m.z() = 0.037712608567758;
+  state.body.q_body_to_ned = {0.999915394282329, 0.0, -0.013007854443166792,
+                              0.0};
+  const uvd::OtterModelOutput output =
+      uvd::evaluate_fossen_otter(state, {}, {}, model);
+  expect_true(output.valid, "loaded equilibrium evaluation valid");
+  expect_true(wrench_vector(output.total_wrench).norm() < 1e-10,
+              "loaded equilibrium total wrench");
+  expect_true(output.velocity_rate_body.norm() < 1e-12,
+              "loaded equilibrium acceleration");
 }
 
 void convergence_test() {
@@ -251,6 +276,7 @@ int main() {
     direction_test();
     actuator_test();
     unloaded_equilibrium_test();
+    loaded_equilibrium_test();
     mss_derivative_test();
     convergence_test();
     std::cout << "fossen_otter_test: all checks passed\n";

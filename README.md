@@ -10,8 +10,7 @@ linearization. Aircraft parameters and run settings live in JSON, so controls
 work does not require editing the model source.
 
 The headless tools compare the fixed-wing model with JSBSim, and Unreal runs it
-with ArduPlane. See [PLANNING.md](docs/PLANNING.md) for the roadmap, and
-[docs/AERO.md](docs/AERO.md) for the aircraft model.
+with ArduPlane. See [docs/AERO.md](docs/AERO.md) for the aircraft model.
 
 ## Architecture
 

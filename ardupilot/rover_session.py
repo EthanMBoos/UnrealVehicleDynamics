@@ -88,6 +88,8 @@ def main():
     telemetry.writerow([
         "time_s", "phase", "steering_pwm", "throttle_pwm", "mode", "armed",
         "roll_est_deg", "pitch_est_deg", "yaw_est_deg", "groundspeed_mps",
+        "speed_target_mps", "speed_estimate_mps",
+        "yaw_rate_target_degps", "yaw_rate_estimate_degps",
     ])
     telemetry_file.flush()
     rover = subprocess.Popen(
@@ -107,6 +109,10 @@ def main():
     armed = False
     latest_attitude = None
     groundspeed_mps = 0.0
+    speed_target_mps = math.nan
+    speed_estimate_mps = math.nan
+    yaw_rate_target_degps = math.nan
+    yaw_rate_estimate_degps = math.nan
     released = False
     release_boot_ms = None
     elapsed_s = 0.0
@@ -130,6 +136,16 @@ def main():
                     )
                 elif kind == "VFR_HUD":
                     groundspeed_mps = float(message.groundspeed)
+                elif kind == "PID_TUNING":
+                    # Rover uses the generic ACCZ enum for its speed loop and
+                    # STEER for its yaw-rate loop. GCS_PID_MASK=3 enables both;
+                    # only target and feedback are needed for this small demo.
+                    if int(message.axis) == mavutil.mavlink.PID_TUNING_ACCZ:
+                        speed_target_mps = float(message.desired)
+                        speed_estimate_mps = float(message.achieved)
+                    elif int(message.axis) == mavutil.mavlink.PID_TUNING_STEER:
+                        yaw_rate_target_degps = float(message.desired)
+                        yaw_rate_estimate_degps = float(message.achieved)
                 elif kind == "ATTITUDE":
                     latest_attitude = message
                     if released:
@@ -147,6 +163,10 @@ def main():
                             f"{math.degrees(message.pitch):.6f}",
                             f"{math.degrees(message.yaw):.6f}",
                             f"{groundspeed_mps:.6f}",
+                            f"{speed_target_mps:.6f}",
+                            f"{speed_estimate_mps:.6f}",
+                            f"{yaw_rate_target_degps:.6f}",
+                            f"{yaw_rate_estimate_degps:.6f}",
                         ])
                         telemetry_file.flush()
 
@@ -154,6 +174,9 @@ def main():
             if connection.target_system and not streams_requested:
                 request_message(connection, mavutil.mavlink.MAVLINK_MSG_ID_ATTITUDE, 20)
                 request_message(connection, mavutil.mavlink.MAVLINK_MSG_ID_VFR_HUD, 10)
+                request_message(
+                    connection, mavutil.mavlink.MAVLINK_MSG_ID_PID_TUNING, 20
+                )
                 streams_requested = True
             if connection.target_system and now - last_request >= 0.5:
                 rc_override(connection, steering_pwm, throttle_pwm)

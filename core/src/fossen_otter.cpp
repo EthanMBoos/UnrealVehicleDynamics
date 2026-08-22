@@ -242,7 +242,11 @@ FossenOtterModel make_fossen_otter_model(const FossenOtterParameters& p) {
       std::sqrt(stiffness_at_flotation(3, 3) / model.effective_mass(3, 3));
   const double pitch_frequency =
       std::sqrt(stiffness_at_flotation(4, 4) / model.effective_mass(4, 4));
-  model.linear_damping << -24.4 * p.gravity_mps2 / p.maximum_forward_speed_mps,
+  // MSS derives the surge term from 24.4 kgf because that is the Otter's
+  // measured total bollard thrust. Use the configured two-propeller force here
+  // so changing the propulsion data does not silently leave the old drag fit.
+  model.linear_damping << -2.0 * p.maximum_forward_bollard_force_N /
+                              p.maximum_forward_speed_mps,
       -model.effective_mass(1, 1) / p.sway_time_constant_s,
       -2.0 * p.heave_damping_ratio * heave_frequency *
           model.effective_mass(2, 2),
