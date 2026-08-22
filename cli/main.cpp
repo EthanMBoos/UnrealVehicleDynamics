@@ -57,7 +57,11 @@ int main(int argc, char** argv) {
       return 2;
     }
     const std::string command = argv[1];
-    const uvd::cli::RunConfig run = uvd::cli::load_run(argv[2]);
+    // The CLI has one real model branch today. Keep this direct until a second
+    // branch exists; that is the point where dispatch and a plant selector can
+    // be introduced from observed requirements rather than speculation.
+    const uvd::cli::AerosondeRunConfig run =
+        uvd::cli::load_aerosonde_run(argv[2]);
 
     if (command == "simulate") {
       uvd::cli::SimulationOptions options;

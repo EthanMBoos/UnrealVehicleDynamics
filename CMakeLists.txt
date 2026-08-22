@@ -28,18 +28,18 @@ add_custom_target(stage_unreal ALL
     "${eigen_SOURCE_DIR}/Eigen" "${UVD_UNREAL_EIGEN_DIR}/Eigen")
 
 add_library(uvd_core STATIC
+  core/src/aerosonde_integrator.cpp
   core/src/fixed_wing.cpp
   core/src/geodesy.cpp
-  core/src/integrator.cpp
   core/src/rigid_body.cpp)
 target_include_directories(uvd_core PUBLIC core/include)
 target_link_libraries(uvd_core PUBLIC Eigen3::Eigen)
 
 add_executable(uvd
-  cli/analysis.cpp
+  cli/aerosonde_analysis.cpp
+  cli/aerosonde_simulation.cpp
   cli/config.cpp
-  cli/main.cpp
-  cli/simulation.cpp)
+  cli/main.cpp)
 target_link_libraries(uvd PRIVATE uvd_core nlohmann_json::nlohmann_json)
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")

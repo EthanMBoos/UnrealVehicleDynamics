@@ -59,7 +59,7 @@ The CLI is the engineering test bench for work that is awkward inside an editor:
 - integrate a trajectory quickly at several timesteps; and
 - adapt the model to JSBSim, Marine Systems Simulator, or another reference implementation.
 
-It is not the launch authority for Unreal and it does not need schemas, dependency injection,
+It is not the launch authority for Unreal and it does not need a configuration framework,
 evidence-bundle types, or a general experiment engine today. Add a CLI command when it exposes a
 useful operation on the shared model. Put research-specific comparison logic in `validation/` so an
 industry library never becomes a runtime dependency.

@@ -6,13 +6,16 @@
 #include <optional>
 #include <string>
 
-#include "uvd/core.hpp"
+#include "uvd/fixed_wing.hpp"
 
 namespace uvd::cli {
 
 using Json = nlohmann::json;
 
-struct RunConfig {
+// These are the Aerosonde run settings read from examples/run.json today, not
+// a universal set of inputs for every vehicle. The explicit name keeps the
+// aircraft assumptions visible while leaving the user's run file unchanged.
+struct AerosondeRunConfig {
   std::filesystem::path path;
   std::filesystem::path aircraft_path;
   AerosondeParameters aircraft;
@@ -29,7 +32,8 @@ struct SimulationOptions {
   std::optional<std::filesystem::path> output;
 };
 
-[[nodiscard]] RunConfig load_run(const std::filesystem::path& path);
+[[nodiscard]] AerosondeRunConfig load_aerosonde_run(
+    const std::filesystem::path& path);
 [[nodiscard]] Json load_json(const std::filesystem::path& path);
 void write_json(const std::filesystem::path& path, const Json& value);
 
@@ -41,12 +45,12 @@ void write_json(const std::filesystem::path& path, const Json& value);
 [[nodiscard]] Json to_json(const AircraftCommand& command);
 [[nodiscard]] Json to_json(const AircraftEffectorState& effectors);
 
-[[nodiscard]] Json simulate(const RunConfig& run,
+[[nodiscard]] Json simulate(const AerosondeRunConfig& run,
                             const SimulationOptions& options);
-[[nodiscard]] Json evaluate(const RunConfig& run,
+[[nodiscard]] Json evaluate(const AerosondeRunConfig& run,
                             const std::optional<Json>& input);
-[[nodiscard]] Json trim(const RunConfig& run);
-[[nodiscard]] Json linearize(const RunConfig& run);
+[[nodiscard]] Json trim(const AerosondeRunConfig& run);
+[[nodiscard]] Json linearize(const AerosondeRunConfig& run);
 
 }  // namespace uvd::cli
 

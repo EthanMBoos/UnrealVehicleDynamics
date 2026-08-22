@@ -1,8 +1,8 @@
+#include "uvd/geodesy.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <numbers>
-
-#include "uvd/core.hpp"
 
 namespace uvd {
 namespace {

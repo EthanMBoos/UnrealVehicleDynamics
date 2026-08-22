@@ -167,8 +167,12 @@ Json to_json(const AircraftEffectorState& effectors) {
           {"throttle", effectors.throttle}};
 }
 
-RunConfig load_run(const fs::path& raw_path) {
-  RunConfig run;
+AerosondeRunConfig load_aerosonde_run(const fs::path& raw_path) {
+  // Keep these fields unchanged until another implemented vehicle needs a
+  // different set. The Unreal aircraft component reads the same run file
+  // independently; changing only this reader would make headless and live runs
+  // interpret one case differently.
+  AerosondeRunConfig run;
   run.path = fs::absolute(raw_path).lexically_normal();
   const Json json = load_json(run.path);
   run.fixed_dt_s = json.at("fixed_dt_s");

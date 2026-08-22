@@ -1,6 +1,6 @@
-#include <cmath>
+#include "uvd/rigid_body.hpp"
 
-#include "uvd/core.hpp"
+#include <cmath>
 
 namespace uvd {
 

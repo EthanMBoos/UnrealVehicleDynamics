@@ -1,7 +1,12 @@
-#include "uvd/core.hpp"
+#include "uvd/fixed_wing.hpp"
 
 namespace uvd {
 namespace {
+
+// These RK4 helpers stay private to the Aerosonde path. In particular, adding
+// derivatives assumes RigidBodyState is the complete integrated state. A
+// marine plant with shaft dynamics or coupled fluid/body inertia needs its own
+// stage state and derivative instead of a misleading generic RK4 wrapper.
 
 Vector4 quaternion_wxyz(const Quaternion& q) noexcept {
   return {q.w(), q.x(), q.y(), q.z()};

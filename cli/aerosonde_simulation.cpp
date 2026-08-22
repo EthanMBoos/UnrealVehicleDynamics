@@ -8,6 +8,11 @@
 namespace uvd::cli {
 namespace {
 
+// This file owns the Aerosonde-specific evaluate/simulate path. The command
+// names and JSON output stay stable for users; the filename makes the model
+// coupling visible so a later marine branch can sit beside it without first
+// inventing a generic simulation framework.
+
 AircraftEffectorState effectors_from_json(const Json& value) {
   return {.aileron_rad = value.at("aileron_rad"),
           .elevator_rad = value.at("elevator_rad"),
@@ -36,7 +41,7 @@ void write_csv_row(std::ostream& stream, double time_s,
 
 }  // namespace
 
-Json simulate(const RunConfig& run, const SimulationOptions& options) {
+Json simulate(const AerosondeRunConfig& run, const SimulationOptions& options) {
   const double dt_s = options.dt_s.value_or(run.fixed_dt_s);
   if (!(dt_s > 0.0) || !(options.duration_s >= 0.0)) {
     throw std::runtime_error("duration must be nonnegative and dt positive");
@@ -89,7 +94,7 @@ Json simulate(const RunConfig& run, const SimulationOptions& options) {
   return result;
 }
 
-Json evaluate(const RunConfig& run, const std::optional<Json>& input) {
+Json evaluate(const AerosondeRunConfig& run, const std::optional<Json>& input) {
   const Json empty = Json::object();
   const Json& value = input ? *input : empty;
   const RigidBodyState state = value.contains("state")

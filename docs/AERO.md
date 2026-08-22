@@ -80,8 +80,8 @@ state + atmosphere
 
 Runtime vectors, matrices, and quaternions are fixed-size Eigen types. Domain structs and member
 names carry the frame and units; bare vector indices are not used to distinguish physical values.
-`fixed_wing.cpp` keeps the complete aircraft wrench calculation together; `rigid_body.cpp` owns
-generic mechanics and integration.
+`fixed_wing.cpp` keeps the complete aircraft wrench calculation together; `rigid_body.cpp` owns the
+conventional rigid-body mechanics, and `aerosonde_integrator.cpp` owns the aircraft's RK4 step.
 
 ## Aerodynamics
 
@@ -301,7 +301,7 @@ need an explicit conversion.
 
 The CLI loader performs the basic mass, inertia, timestep, and required-field checks needed by the
 current aircraft file. `uvd evaluate` exposes air data, coefficients, effectors, and each wrench for
-focused hand cases. Broader schema and envelope checking should be added when more than one vehicle
+focused hand cases. Broader input and envelope checking should be added when more than one vehicle
 file makes it useful.
 
 The optional JSBSim comparison checks the aero-only fixture over boundary, basis, and random cases.

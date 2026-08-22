@@ -10,6 +10,12 @@
 namespace uvd::cli {
 namespace {
 
+// Trim and linearization below encode fixed-wing choices: straight-level
+// flight, Aerosonde effectors, and an aircraft RK4 step. Keeping them
+// explicitly model-specific prevents future vehicle support from accumulating
+// conditionals inside an analysis routine whose residuals no longer have one
+// clear meaning.
+
 using TrimVector = Eigen::Matrix<double, 8, 1>;
 using TrimMatrix = Eigen::Matrix<double, 8, 8>;
 using StateVector = Eigen::Matrix<double, 12, 1>;
@@ -50,7 +56,7 @@ AircraftEffectorState effectors_for(const TrimVector& x) {
           .throttle = x(kThrottle)};
 }
 
-TrimVector residual_for(const TrimVector& x, const RunConfig& run,
+TrimVector residual_for(const TrimVector& x, const AerosondeRunConfig& run,
                         double target_speed_mps) {
   const RigidBodyState state = state_for(x, run.initial_state.position_ned_m);
   const AircraftEffectorState effectors = effectors_for(x);
@@ -72,7 +78,7 @@ TrimVector residual_for(const TrimVector& x, const RunConfig& run,
   return residual;
 }
 
-TrimResult solve_trim(const RunConfig& run) {
+TrimResult solve_trim(const AerosondeRunConfig& run) {
   const AircraftEffectorState initial_effectors =
       map_command(run.trim, run.aircraft.actuator);
   const double target_speed_mps = run.initial_state.velocity_body_mps.norm();
@@ -223,9 +229,11 @@ Json matrix_json(const auto& matrix) {
 
 }  // namespace
 
-Json trim(const RunConfig& run) { return trim_result_json(solve_trim(run)); }
+Json trim(const AerosondeRunConfig& run) {
+  return trim_result_json(solve_trim(run));
+}
 
-Json linearize(const RunConfig& run) {
+Json linearize(const AerosondeRunConfig& run) {
   const TrimResult operating_point = solve_trim(run);
   if (!operating_point.converged) {
     throw std::runtime_error("trim did not converge: " +

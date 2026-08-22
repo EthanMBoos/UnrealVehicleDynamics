@@ -1,8 +1,8 @@
+#include "uvd/fixed_wing.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <numbers>
-
-#include "uvd/core.hpp"
 
 namespace uvd {
 namespace {
