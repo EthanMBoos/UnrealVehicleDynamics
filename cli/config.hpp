@@ -5,8 +5,10 @@
 #include <nlohmann/json.hpp>
 #include <optional>
 #include <string>
+#include <variant>
 
 #include "uvd/fixed_wing.hpp"
+#include "uvd/marine.hpp"
 
 namespace uvd::cli {
 
@@ -26,6 +28,18 @@ struct AerosondeRunConfig {
   AircraftCommand trim;
 };
 
+struct OtterRunConfig {
+  std::filesystem::path path;
+  std::filesystem::path plant_path;
+  FossenOtterModel model;
+  double fixed_dt_s{};
+  OtterState initial_state;
+  OtterEnvironment environment;
+  OtterCommand command;
+};
+
+using RunConfig = std::variant<AerosondeRunConfig, OtterRunConfig>;
+
 struct SimulationOptions {
   double duration_s{10.0};
   std::optional<double> dt_s;
@@ -34,6 +48,8 @@ struct SimulationOptions {
 
 [[nodiscard]] AerosondeRunConfig load_aerosonde_run(
     const std::filesystem::path& path);
+[[nodiscard]] OtterRunConfig load_otter_run(const std::filesystem::path& path);
+[[nodiscard]] RunConfig load_run(const std::filesystem::path& path);
 [[nodiscard]] Json load_json(const std::filesystem::path& path);
 void write_json(const std::filesystem::path& path, const Json& value);
 
@@ -47,7 +63,11 @@ void write_json(const std::filesystem::path& path, const Json& value);
 
 [[nodiscard]] Json simulate(const AerosondeRunConfig& run,
                             const SimulationOptions& options);
+[[nodiscard]] Json simulate(const OtterRunConfig& run,
+                            const SimulationOptions& options);
 [[nodiscard]] Json evaluate(const AerosondeRunConfig& run,
+                            const std::optional<Json>& input);
+[[nodiscard]] Json evaluate(const OtterRunConfig& run,
                             const std::optional<Json>& input);
 [[nodiscard]] Json trim(const AerosondeRunConfig& run);
 [[nodiscard]] Json linearize(const AerosondeRunConfig& run);

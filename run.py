@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build and run the one Unreal + Cesium + ArduPlane v1."""
+"""Build and run an explicit Unreal + Cesium + ArduPilot demonstration."""
 
 import json
 import os
@@ -13,8 +13,26 @@ import time
 
 ROOT = Path(__file__).resolve().parent
 PROJECT = ROOT / "unreal" / "UnrealVehicleDynamics.uproject"
-CONFIG = ROOT / "examples" / "run.json"
-IMAGE = "uvd-ardupilot:v1"
+PROFILES = {
+    "plane": {
+        "config": ROOT / "examples" / "run.json",
+        "image": "uvd-ardupilot:v1",
+        "dockerfile": ROOT / "ardupilot" / "Dockerfile",
+        "run_prefix": "fbwa-roll",
+    },
+    "otter": {
+        "config": ROOT / "examples" / "otter-run.json",
+        "image": "uvd-ardurover:v1",
+        "dockerfile": ROOT / "ardupilot" / "Dockerfile.rover",
+        "run_prefix": "acro-turn",
+    },
+    "otter-open-loop": {
+        "config": ROOT / "examples" / "otter-run.json",
+        "image": None,
+        "dockerfile": None,
+        "run_prefix": "otter-open-loop",
+    },
+}
 
 
 def load_local_env():
@@ -55,7 +73,7 @@ def engine_root(editor):
     raise RuntimeError("could not find the Unreal Engine root")
 
 
-def build(editor):
+def build(editor, profile):
     subprocess.run(["cmake", "-S", str(ROOT), "-B", str(ROOT / "build")], check=True)
     subprocess.run(["cmake", "--build", str(ROOT / "build")], check=True)
     engine = engine_root(editor)
@@ -69,35 +87,52 @@ def build(editor):
         str(script), "UnrealVehicleDynamicsEditor", platform, "Development",
         f"-Project={PROJECT}", "-WaitMutex", "-NoHotReloadFromIDE",
     ], check=True)
-    subprocess.run([
-        "docker", "build", "-t", IMAGE, "-f",
-        str(ROOT / "ardupilot" / "Dockerfile"), str(ROOT),
-    ], check=True)
+    if profile["image"]:
+        subprocess.run([
+            "docker", "build", "-t", profile["image"], "-f",
+            str(profile["dockerfile"]), str(ROOT),
+        ], check=True)
 
 
 def main():
     load_local_env()
+    profile_name = sys.argv[1] if len(sys.argv) > 1 else "plane"
+    if profile_name not in PROFILES or len(sys.argv) > 2:
+        choices = " | ".join(PROFILES)
+        raise RuntimeError(f"usage: ./run.py [{choices}]")
+    profile = PROFILES[profile_name]
+    config_path = profile["config"]
     editor = unreal_editor()
-    build(editor)
+    build(editor, profile)
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    run_dir = ROOT / "runs" / f"fbwa-roll-{timestamp}"
+    run_dir = ROOT / "runs" / f"{profile['run_prefix']}-{timestamp}"
     if run_dir.exists():
         run_dir = run_dir.with_name(f"{run_dir.name}-{os.getpid()}")
     run_dir.mkdir(parents=True)
     print(f"uvd: writing run to {run_dir}", flush=True)
-    config = json.loads(CONFIG.read_text())
+    config = json.loads(config_path.read_text())
     origin = config["origin"]
     home = ",".join(str(value) for value in [
         origin["latitude_deg"], origin["longitude_deg"],
         origin["altitude_msl_m"], origin["heading_deg"],
     ])
     rate = round(1.0 / config["fixed_dt_s"])
-    container_name = f"uvd-ardupilot-{os.getpid()}"
-    unreal = subprocess.Popen([
+    container_name = f"uvd-{profile_name}-{os.getpid()}"
+    unreal_command = [
         str(editor), str(PROJECT), "-game", "-log", "-novsync", "-Multiprocess",
-        f"-UvdRun={CONFIG}", f"-UvdFixedDt={config['fixed_dt_s']}",
+        f"-UvdRun={config_path}", f"-UvdFixedDt={config['fixed_dt_s']}",
         f"-UvdTruth={run_dir / 'truth.csv'}",
-    ])
+    ]
+    if profile_name == "otter-open-loop":
+        unreal_command.append("-UvdOpenLoop")
+    unreal = subprocess.Popen(unreal_command)
+    if not profile["image"]:
+        try:
+            return unreal.wait()
+        except KeyboardInterrupt:
+            unreal.terminate()
+            return unreal.wait()
+
     docker_command = [
         "docker", "run", "--rm", "--name", container_name,
         "--volume", f"{run_dir}:/run",
@@ -110,7 +145,7 @@ def main():
         "-e", f"UVD_RATE_HZ={rate}",
         "-e", f"UVD_CONTROL_PORT={config['controller']['control_port']}",
         "-e", "UVD_RUN_DIR=/run",
-        IMAGE,
+        profile["image"],
     ]
     controller = subprocess.Popen(docker_command)
     stopping = False
@@ -144,7 +179,7 @@ def main():
             return controller.returncode
         subprocess.run([
             "docker", "run", "--rm", "--volume", f"{run_dir}:/run",
-            "--entrypoint", "/opt/ardupilot-venv/bin/python", IMAGE,
+            "--entrypoint", "/opt/ardupilot-venv/bin/python", profile["image"],
             "/opt/ardupilot/report.py", "/run",
         ], check=True)
         print(f"uvd: report ready at {run_dir / 'report.html'}", flush=True)

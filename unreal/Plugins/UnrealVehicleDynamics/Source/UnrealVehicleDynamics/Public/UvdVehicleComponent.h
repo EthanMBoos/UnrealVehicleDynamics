@@ -1,18 +1,18 @@
 #pragma once
 
 #include "Components/ActorComponent.h"
-#include "UvdAircraftComponent.generated.h"
+#include "UvdVehicleComponent.generated.h"
 
 class UPrimitiveComponent;
-struct FUvdAircraftRuntime;
+struct FUvdVehicleRuntime;
 
 UCLASS()
-class UNREALVEHICLEDYNAMICS_API UUvdAircraftComponent : public UActorComponent {
+class UNREALVEHICLEDYNAMICS_API UUvdVehicleComponent : public UActorComponent {
   GENERATED_BODY()
 
  public:
-  UUvdAircraftComponent();
-  virtual ~UUvdAircraftComponent() override;
+  UUvdVehicleComponent();
+  virtual ~UUvdVehicleComponent() override;
   virtual void BeginPlay() override;
   virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
   virtual void AsyncPhysicsTickComponent(float DeltaTime,
@@ -20,6 +20,7 @@ class UNREALVEHICLEDYNAMICS_API UUvdAircraftComponent : public UActorComponent {
 
   FString RunConfigPath;
   FString TruthOutputPath;
+  bool OpenLoop = false;
 
   void SetSimulationPaused(bool Paused);
   bool IsSimulationPaused() const { return SimulationPaused; }
@@ -35,7 +36,7 @@ class UNREALVEHICLEDYNAMICS_API UUvdAircraftComponent : public UActorComponent {
   UPROPERTY(Transient)
   TObjectPtr<UPrimitiveComponent> Body;
 
-  FUvdAircraftRuntime* Runtime = nullptr;
+  FUvdVehicleRuntime* Runtime = nullptr;
   FVector PausedLinearVelocity = FVector::ZeroVector;
   FVector PausedAngularVelocity = FVector::ZeroVector;
   bool SimulationPaused = false;

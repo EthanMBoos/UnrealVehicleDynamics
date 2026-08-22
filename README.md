@@ -50,12 +50,12 @@ can quickly evaluate, simulate, trim, and linearize the same model. This is the
 engineering test bench for the Unreal runtime: the same state reaches the same
 force model, and the RK4 trajectory can be checked as the timestep is refined.
 
-Chaos owns motion when its rigid-body model can represent the problem, as in the
-first aircraft and boat demos. If an engineering model needs physics Chaos
-cannot express, the core owns that vehicle's state and Unreal renders the
-committed pose. The tool is still native to Unreal: configuration, controls,
-sensors, maps, timing, logging, replay, and visualization stay in the same
-workflow. Only the solver responsible for advancing the state changes.
+Chaos owns motion when its rigid-body model can represent the problem, as in
+the first aircraft. The Otter's coupled marine mass cannot be represented that
+way, so its core integrator owns the state and Unreal renders the committed
+pose. The tool is still native to Unreal: configuration, controls, sensors,
+maps, timing, logging, replay, and visualization stay in the same workflow.
+Only the solver responsible for advancing the state changes.
 
 Water is the hardest version of this contract and may justify a paper by itself.
 The first demo uses one Unreal Water wave definition for both the visible

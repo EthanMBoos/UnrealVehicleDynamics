@@ -57,11 +57,9 @@ int main(int argc, char** argv) {
       return 2;
     }
     const std::string command = argv[1];
-    // The CLI has one real model branch today. Keep this direct until a second
-    // branch exists; that is the point where dispatch and a plant selector can
-    // be introduced from observed requirements rather than speculation.
-    const uvd::cli::AerosondeRunConfig run =
-        uvd::cli::load_aerosonde_run(argv[2]);
+    // This direct two-way branch exists because there are now two implemented
+    // plants. It is intentionally not a factory or extension framework.
+    const uvd::cli::RunConfig run = uvd::cli::load_run(argv[2]);
 
     if (command == "simulate") {
       uvd::cli::SimulationOptions options;
@@ -77,7 +75,12 @@ int main(int argc, char** argv) {
           throw std::runtime_error("unknown option: " + std::string(option));
         }
       }
-      emit(uvd::cli::simulate(run, options), std::nullopt);
+      emit(std::visit(
+               [&](const auto& selected) {
+                 return uvd::cli::simulate(selected, options);
+               },
+               run),
+           std::nullopt);
       return 0;
     }
 
@@ -97,17 +100,27 @@ int main(int argc, char** argv) {
           input = uvd::cli::load_json(path);
         }
       }
-      emit(uvd::cli::evaluate(run, input), std::nullopt);
+      emit(std::visit(
+               [&](const auto& selected) {
+                 return uvd::cli::evaluate(selected, input);
+               },
+               run),
+           std::nullopt);
       return 0;
     }
 
     const auto output = parse_output(3, argc, argv);
+    const auto* aircraft = std::get_if<uvd::cli::AerosondeRunConfig>(&run);
+    if (!aircraft) {
+      throw std::runtime_error(command +
+                               " is not available for the Otter plant");
+    }
     if (command == "trim") {
-      emit(uvd::cli::trim(run), output);
+      emit(uvd::cli::trim(*aircraft), output);
       return 0;
     }
     if (command == "linearize") {
-      emit(uvd::cli::linearize(run), output);
+      emit(uvd::cli::linearize(*aircraft), output);
       return 0;
     }
     usage();

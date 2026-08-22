@@ -8,7 +8,7 @@
 #include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
 #include "InputCoreTypes.h"
-#include "UvdAircraftComponent.h"
+#include "UvdVehicleComponent.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogUvdCamera, Log, All);
 
@@ -79,7 +79,7 @@ void AUvdCameraPawn::SetupPlayerInputComponent(
   ShowMessage(
       TEXT("Camera ready: 1 chase  2 orbit  3 onboard  4 side  |  "
            "RMB orbit  wheel zoom  |  "
-           "C cycle  F aircraft  Space pause"));
+           "C cycle  F vehicle  Space pause"));
 
   PlayerInputComponent
       ->BindKey(EKeys::One, IE_Pressed, this, &AUvdCameraPawn::SelectChase)
@@ -150,8 +150,8 @@ void AUvdCameraPawn::CycleMode() {
 void AUvdCameraPawn::Reacquire() { SetMode(EUvdCameraMode::Chase); }
 
 void AUvdCameraPawn::TogglePause() {
-  UUvdAircraftComponent* Simulation =
-      Target.IsValid() ? Target->FindComponentByClass<UUvdAircraftComponent>()
+  UUvdVehicleComponent* Simulation =
+      Target.IsValid() ? Target->FindComponentByClass<UUvdVehicleComponent>()
                        : nullptr;
   if (!Simulation) {
     ShowMessage(TEXT("Could not pause: vehicle simulation unavailable"));
@@ -232,7 +232,7 @@ void AUvdCameraPawn::LookVertical(float Value) {
 
 void AUvdCameraPawn::FindTarget() {
   for (TActorIterator<AActor> Actor(GetWorld()); Actor; ++Actor) {
-    if (Actor->FindComponentByClass<UUvdAircraftComponent>()) {
+    if (Actor->FindComponentByClass<UUvdVehicleComponent>()) {
       SetTarget(*Actor);
       return;
     }

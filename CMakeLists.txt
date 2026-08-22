@@ -30,7 +30,9 @@ add_custom_target(stage_unreal ALL
 add_library(uvd_core STATIC
   core/src/aerosonde_integrator.cpp
   core/src/fixed_wing.cpp
+  core/src/fossen_otter.cpp
   core/src/geodesy.cpp
+  core/src/marine_integrator.cpp
   core/src/rigid_body.cpp)
 target_include_directories(uvd_core PUBLIC core/include)
 target_link_libraries(uvd_core PUBLIC Eigen3::Eigen)
@@ -39,7 +41,8 @@ add_executable(uvd
   cli/aerosonde_analysis.cpp
   cli/aerosonde_simulation.cpp
   cli/config.cpp
-  cli/main.cpp)
+  cli/main.cpp
+  cli/otter_simulation.cpp)
 target_link_libraries(uvd PRIVATE uvd_core nlohmann_json::nlohmann_json)
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
@@ -47,4 +50,11 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     -Wno-deprecated-declarations)
   target_compile_options(uvd PRIVATE -Wall -Wextra -Wpedantic
     -Wno-deprecated-declarations)
+endif()
+
+include(CTest)
+if(BUILD_TESTING)
+  add_executable(fossen_otter_test tests/fossen_otter_test.cpp)
+  target_link_libraries(fossen_otter_test PRIVATE uvd_core)
+  add_test(NAME fossen_otter COMMAND fossen_otter_test)
 endif()

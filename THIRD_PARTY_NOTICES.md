@@ -10,6 +10,12 @@ packaged with the Unreal plugin. See the pinned [ArduPilot license](https://gith
 The Aerosonde parameter data records its source in the aircraft JSON. The referenced BYU MAVSim
 repository is GPL-3.0. See the [BYU license](https://github.com/byu-magicc/mavsim_public/blob/a8489bbc30ab9e746dccac8ac614ab2f8acac6bb/LICENSE).
 
+The Fossen Otter equations, parameters, and Hoerner lookup data are adapted
+from the MIT-licensed Marine Systems Simulator, Copyright (c) 2004 Thor I.
+Fossen. The required notice is preserved in
+[`third_party/MSS-LICENSE.txt`](third_party/MSS-LICENSE.txt). The initial
+comparison source is [MSS commit d7c1e969](https://github.com/cybergalactic/MSS/tree/d7c1e969856f4e98bc2f6ffa466d0abd6ec5d950).
+
 Cesium for Unreal is Apache-2.0. Streamed terrain and imagery retain their provider terms and credits
 through the Cesium credit display. See the [Cesium for Unreal license](https://github.com/CesiumGS/cesium-unreal/blob/v2.29.0/LICENSE).
 

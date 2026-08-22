@@ -1,0 +1,54 @@
+{
+  "model_id": "fossen_otter_educational",
+  "source": {
+    "name": "Marine Systems Simulator otter.m",
+    "url": "https://github.com/cybergalactic/MSS/blob/master/CRAFT/USV/models/otter.m",
+    "commit": "d7c1e969856f4e98bc2f6ffa466d0abd6ec5d950",
+    "sha256": "66c144fea629cee4bea0ad55b62a1bc5e55b46e68ac8e94860ddc7f0aff12248",
+    "license": "MIT"
+  },
+  "gravity_mps2": 9.81,
+  "water_density_kgpm3": 1025.0,
+  "hull": {
+    "length_m": 2.0,
+    "beam_m": 1.08,
+    "mass_kg": 55.0,
+    "cg_body_m": [0.2, 0.0, -0.2],
+    "radii_of_gyration_m": [0.432, 0.5, 0.5],
+    "maximum_forward_speed_mps": 3.0864
+  },
+  "payload": {
+    "mass_kg": 25.0,
+    "position_body_m": [0.05, 0.0, -0.35]
+  },
+  "pontoon": {
+    "beam_m": 0.25,
+    "centerline_offset_m": 0.395,
+    "waterline_area_coefficient": 0.75,
+    "block_coefficient": 0.4,
+    "center_of_flotation_x_m": -0.2
+  },
+  "added_mass": {
+    "surge_soeding_coefficient": 2.7,
+    "sway_hull_mass_ratio": 1.5,
+    "heave_hull_mass_ratio": 1.0,
+    "roll_inertia_ratio": 0.2,
+    "pitch_inertia_ratio": 0.8,
+    "yaw_inertia_ratio": 1.7
+  },
+  "damping": {
+    "sway_time_constant_s": 1.0,
+    "yaw_time_constant_s": 1.0,
+    "heave_ratio": 0.3,
+    "roll_ratio": 0.2,
+    "pitch_ratio": 0.4,
+    "nonlinear_yaw_factor": 10.0
+  },
+  "propellers": {
+    "forward_thrust_coefficient": 0.01108,
+    "reverse_thrust_coefficient": 0.006445,
+    "maximum_forward_bollard_force_N": 119.682,
+    "maximum_reverse_bollard_force_N": 66.708,
+    "response_time_s": 0.1
+  }
+}

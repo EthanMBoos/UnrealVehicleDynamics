@@ -12,9 +12,10 @@ MSS Otter equations -> C++ plant -> headless evaluation and simulation
                                       +-> ArduRover JSON loop
 ```
 
-## First: isolate the working aircraft path
+## Completed prerequisite: isolate the working aircraft path
 
-Before porting the Otter, make one behavior-preserving refactor:
+Commit `7226d96` completed the behavior-preserving refactor needed before the
+Otter port:
 
 - move the shared rigid-body state, wrench, derivative and quaternion API into
   `rigid_body.hpp`;
@@ -33,10 +34,9 @@ Otter branch. The current run file is parsed separately by the CLI and Unreal,
 so changing it early would disturb the proven path without testing a real
 model swap.
 
-Verify this refactor with unchanged headless evaluation, simulation, trim and
-linearization results, the timestep-convergence check, and a fresh
-`-NoHotReloadFromIDE` Unreal/ArduPlane lockstep run. Only then begin the Otter
-port below.
+The refactor passed unchanged headless evaluation, simulation, trim and
+linearization results, timestep convergence, JSBSim comparison, and a fresh
+`-NoHotReloadFromIDE` Unreal/ArduPlane lockstep run.
 
 ## Reference authority
 
@@ -62,8 +62,10 @@ behind MSS:
 
 Do not expect both programs to produce the same derivative or trajectory.
 Match current MSS and use Python as a secondary implementation reference.
-Record the upstream source revision as provenance, not as a runtime dependency
-or a version gate.
+The first comparison data uses MSS commit
+`d7c1e969856f4e98bc2f6ffa466d0abd6ec5d950`. Record that revision and source
+hash with expected values as provenance, not as a runtime dependency or a
+version gate.
 
 ## State and frames
 
@@ -87,9 +89,14 @@ omega_body_radps     <- p, q, r
 The Otter adds two actuator states:
 
 ```cpp
+struct OtterActuatorState {
+  double left_propeller_speed_radps;
+  double right_propeller_speed_radps;
+};
+
 struct OtterState {
   RigidBodyState body;
-  Vector2 propeller_speed_radps;
+  OtterActuatorState actuators;
 };
 ```
 
@@ -289,8 +296,8 @@ draft                   0.1951219512 m
 surge added mass        5.2815210096 kg
 propeller minimum      -101.7366655 rad/s  (-971.51 RPM)
 propeller maximum       103.9308643 rad/s  ( 992.47 RPM)
-equilibrium down         0.03754241 m
-equilibrium pitch       -0.02511045 rad     (-1.439 deg)
+zero-attitude restoring offset down    0.03754241 m
+zero-attitude restoring offset pitch  -0.02511045 rad  (-1.439 deg)
 ```
 
 Corrected inertia at the combined CG:
@@ -312,7 +319,9 @@ Effective mass matrix at the midships origin:
 [  0          12.25       0          2.6375     0         40.044922]
 ```
 
-The off-diagonal terms are physical parts of this reference plant. A Chaos
+The restoring offset is recomputed from payload gravity in the current body
+attitude. It is not an exact stationary loaded state. The off-diagonal terms
+are physical parts of this reference plant. A Chaos
 rigid body cannot represent this matrix with one translational mass and one
 3x3 rotational inertia tensor.
 
@@ -340,12 +349,14 @@ M * nu_dot_relative = generalized_load
 ```
 
 Do not reproduce Python's explicit inverse or its finite-step Euler behavior.
-A C++ RK4 trajectory will not match the Python samples exactly at a fixed
-timestep. Validation instead requires:
+Current MSS also subtracts its restoring offset from `eta` before evaluating
+kinematics. UVD keeps physical position and attitude in its quaternion state,
+so exact comparison is deliberately limited to loads and six-axis velocity
+and rate acceleration. Validation requires:
 
-1. matched-state derivatives against MSS;
-2. a like-for-like RK4 trajectory with fixed propeller speed; and
-3. independent timestep convergence of the augmented C++ state.
+1. matched-state load terms and `nu_dot` against MSS;
+2. independent quaternion position and attitude kinematics; and
+3. timestep convergence of the augmented C++ state.
 
 This separates equation errors from integration error. For a smooth case that
 does not cross a saturation or absolute-value discontinuity, RK4 error should
@@ -374,8 +385,8 @@ FossenOtterModel make_fossen_otter_model(
     const FossenOtterParameters& parameters);
 
 OtterModelOutput evaluate_fossen_otter(
-    const RigidBodyState& body,
-    const OtterActuatorState& actuators,
+    const OtterState& state,
+    const OtterCommand& command,
     const OtterEnvironment& environment,
     const FossenOtterModel& model);
 
@@ -393,7 +404,9 @@ coefficients, loaded draft and Hoerner coefficient. Validate those once at
 configuration load. Runtime evaluation should use only fixed-size Eigen
 objects and perform no I/O or allocation.
 
-`OtterModelOutput` should expose enough named terms to audit the equations:
+`OtterCommand` carries physical left and right commanded shaft speeds in
+`rad/s`. PWM interpretation stays at controller boundaries. `OtterModelOutput`
+exposes enough named terms to audit the equations:
 
 ```text
 current velocity in body axes
@@ -488,25 +501,24 @@ to build or run the project.
 
 Generate and record high-precision MSS results for a small set of named states:
 
-1. loaded equilibrium with zero current and zero propeller speed;
+1. loaded zero state with zero current and zero propeller speed;
 2. equal forward propeller speed;
 3. equal reverse propeller speed;
 4. asymmetric propulsion with nonzero six-axis state;
 5. nonzero current with roll, pitch and yaw rates; and
 6. commands beyond both shaft-speed limits.
 
-Compare velocity, angular-rate, position and Euler-attitude derivatives. For
-the quaternion C++ state, convert its kinematics to ZYX Euler rates only in the
-test diagnostic. Expected data records the MSS source revision that generated
-it. Agreement with these fixtures checks the port; it is not independent
-physical validation.
+Compare the signed load terms and the six body-velocity and rate derivatives.
+Test quaternion kinematics independently because MSS applies its restoring
+offset inside its Euler kinematics. Expected data records the MSS source
+revision that generated it. Agreement with these fixtures checks the port; it
+is not independent physical validation.
 
 ### Integration checks
 
-- A zero-command equilibrium remains stationary.
+- An unloaded zero-command equilibrium remains stationary.
 - A propeller step reaches approximately `63.2%` after one `0.1 s` time
   constant.
-- A fixed-propeller trajectory agrees with MSS RK4.
 - Halving the C++ timestep reduces smooth-trajectory error consistently.
 - A sixty-second equal-thrust run remains straight, finite and bounded.
 - A sixty-second differential-thrust run turns in the expected direction and
@@ -629,25 +641,23 @@ physical validation of a real Otter.
 
 ## Implementation sequence
 
-1. Isolate the shared rigid-body declarations and explicitly name the
-   Aerosonde integrator and CLI path as described above. Verify that the
-   existing headless and Unreal behavior is unchanged.
-2. Update [ARDUROVER.md](ARDUROVER.md) to make current MSS the primary
+1. Update [ARDUROVER.md](ARDUROVER.md) to make current MSS the primary
    equation source and add the MSS MIT notice to `THIRD_PARTY_NOTICES.md`.
-3. Add fixed-size marine aliases, concrete Otter parameters, derived model,
+2. Add fixed-size marine aliases, concrete Otter parameters, derived model,
    state, command, environment, output and derivative types.
-4. Port model construction and verify the golden mass, hydrostatic and
+3. Port model construction and verify the golden mass, hydrostatic and
    propeller values.
-5. Port current, Coriolis, propeller, damping, cross-flow and restoring terms
+4. Port current, Coriolis, propeller, damping, cross-flow and restoring terms
    in the same staged order as the source equations.
-6. Add augmented quaternion RK4 integration for the body and propeller states.
+5. Add augmented quaternion RK4 integration for the body and propeller states.
+6. Add construction, equation, matched-acceleration and convergence tests with
+   each corresponding model layer rather than after the implementation.
 7. Add the explicit plant selector and Otter JSON loading to the CLI.
 8. Add headless `evaluate` and constant-command `simulate` support.
-9. Add construction, equation, matched-derivative and convergence tests.
-10. Demonstrate equal-thrust and differential-thrust runs, then review the
+9. Demonstrate equal-thrust and differential-thrust runs, then review the
    generated trajectories before expanding scope.
-11. Only after those checks pass, add the kinematic Unreal pose path.
-12. Only after the pose path works, add the ArduRover container and bounded
+10. Only after those checks pass, add the kinematic Unreal pose path.
+11. Only after the pose path works, add the ArduRover container and bounded
     closed-loop experiment.
 
 This sequence proves the physical model and the repository's first real plant

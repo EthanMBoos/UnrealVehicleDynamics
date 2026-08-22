@@ -101,6 +101,65 @@ AerosondeParameters load_aircraft(const fs::path& path) {
   return parameters;
 }
 
+FossenOtterParameters load_otter_parameters(const fs::path& path) {
+  const Json json = load_json(path);
+  FossenOtterParameters parameters;
+  parameters.model_id = json.at("model_id");
+  parameters.gravity_mps2 = json.at("gravity_mps2");
+  parameters.water_density_kgpm3 = json.at("water_density_kgpm3");
+
+  const auto& hull = json.at("hull");
+  parameters.length_m = hull.at("length_m");
+  parameters.beam_m = hull.at("beam_m");
+  parameters.hull_mass_kg = hull.at("mass_kg");
+  parameters.hull_cg_body_m = vector3_from_json(hull.at("cg_body_m"));
+  parameters.hull_radii_of_gyration_m =
+      vector3_from_json(hull.at("radii_of_gyration_m"));
+  parameters.maximum_forward_speed_mps = hull.at("maximum_forward_speed_mps");
+
+  const auto& payload = json.at("payload");
+  parameters.payload_mass_kg = payload.at("mass_kg");
+  parameters.payload_position_body_m =
+      vector3_from_json(payload.at("position_body_m"));
+
+  const auto& pontoon = json.at("pontoon");
+  parameters.pontoon_beam_m = pontoon.at("beam_m");
+  parameters.pontoon_centerline_offset_m = pontoon.at("centerline_offset_m");
+  parameters.pontoon_waterline_area_coefficient =
+      pontoon.at("waterline_area_coefficient");
+  parameters.pontoon_block_coefficient = pontoon.at("block_coefficient");
+  parameters.center_of_flotation_x_m = pontoon.at("center_of_flotation_x_m");
+
+  const auto& added_mass = json.at("added_mass");
+  parameters.surge_added_mass_coefficient =
+      added_mass.at("surge_soeding_coefficient");
+  parameters.sway_added_mass_ratio = added_mass.at("sway_hull_mass_ratio");
+  parameters.heave_added_mass_ratio = added_mass.at("heave_hull_mass_ratio");
+  parameters.roll_added_inertia_ratio = added_mass.at("roll_inertia_ratio");
+  parameters.pitch_added_inertia_ratio = added_mass.at("pitch_inertia_ratio");
+  parameters.yaw_added_inertia_ratio = added_mass.at("yaw_inertia_ratio");
+
+  const auto& damping = json.at("damping");
+  parameters.sway_time_constant_s = damping.at("sway_time_constant_s");
+  parameters.yaw_time_constant_s = damping.at("yaw_time_constant_s");
+  parameters.heave_damping_ratio = damping.at("heave_ratio");
+  parameters.roll_damping_ratio = damping.at("roll_ratio");
+  parameters.pitch_damping_ratio = damping.at("pitch_ratio");
+  parameters.nonlinear_yaw_factor = damping.at("nonlinear_yaw_factor");
+
+  const auto& propellers = json.at("propellers");
+  parameters.forward_thrust_coefficient =
+      propellers.at("forward_thrust_coefficient");
+  parameters.reverse_thrust_coefficient =
+      propellers.at("reverse_thrust_coefficient");
+  parameters.maximum_forward_bollard_force_N =
+      propellers.at("maximum_forward_bollard_force_N");
+  parameters.maximum_reverse_bollard_force_N =
+      propellers.at("maximum_reverse_bollard_force_N");
+  parameters.propeller_response_time_s = propellers.at("response_time_s");
+  return parameters;
+}
+
 }  // namespace
 
 Json load_json(const fs::path& path) {
@@ -192,6 +251,68 @@ AerosondeRunConfig load_aerosonde_run(const fs::path& raw_path) {
               .rudder = trim.at("rudder"),
               .throttle = trim.at("throttle")};
   return run;
+}
+
+OtterRunConfig load_otter_run(const fs::path& raw_path) {
+  OtterRunConfig run;
+  run.path = fs::absolute(raw_path).lexically_normal();
+  const Json json = load_json(run.path);
+  run.fixed_dt_s = json.at("fixed_dt_s");
+  if (!(run.fixed_dt_s > 0.0)) {
+    throw std::runtime_error("fixed_dt_s must be positive");
+  }
+  const auto& plant = json.at("plant");
+  if (plant.at("type").get<std::string>() != "fossen_otter_educational") {
+    throw std::runtime_error("unsupported Otter plant type");
+  }
+  run.plant_path =
+      (run.path.parent_path() / plant.at("parameters").get<std::string>())
+          .lexically_normal();
+  run.model = make_fossen_otter_model(load_otter_parameters(run.plant_path));
+
+  const auto& initial = json.at("initial_state");
+  run.initial_state.body = state_from_json(initial);
+  const auto& shaft_speed = initial.at("propeller_speed_radps");
+  run.initial_state.actuators = {shaft_speed.at(0), shaft_speed.at(1)};
+  if (run.initial_state.actuators.left_propeller_speed_radps <
+          run.model.minimum_propeller_speed_radps ||
+      run.initial_state.actuators.left_propeller_speed_radps >
+          run.model.maximum_propeller_speed_radps ||
+      run.initial_state.actuators.right_propeller_speed_radps <
+          run.model.minimum_propeller_speed_radps ||
+      run.initial_state.actuators.right_propeller_speed_radps >
+          run.model.maximum_propeller_speed_radps) {
+    throw std::runtime_error("initial propeller speed exceeds physical limits");
+  }
+  const auto& water = json.at("water");
+  run.environment.water_surface_down_m = water.at("surface_down_m");
+  run.environment.current_ned_mps =
+      vector3_from_json(water.at("current_ned_mps"));
+  if (std::abs(run.environment.current_ned_mps.z()) > 1e-12) {
+    throw std::runtime_error("the Otter supports horizontal current only");
+  }
+  const auto& command = json.at("command");
+  run.command = {
+      .left_propeller_speed_command_radps =
+          command.at("left_propeller_speed_radps"),
+      .right_propeller_speed_command_radps =
+          command.at("right_propeller_speed_radps"),
+  };
+  return run;
+}
+
+RunConfig load_run(const fs::path& path) {
+  const Json json = load_json(path);
+  if (!json.contains("plant")) {
+    // examples/run.json remains the proven aircraft input until Unreal and the
+    // CLI can move to the explicit plant field together.
+    return load_aerosonde_run(path);
+  }
+  const std::string type = json.at("plant").at("type");
+  if (type == "fossen_otter_educational") {
+    return load_otter_run(path);
+  }
+  throw std::runtime_error("unsupported plant type: " + type);
 }
 
 }  // namespace uvd::cli

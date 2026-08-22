@@ -1,8 +1,8 @@
 # ArduRover boat direction
 
-The first marine push is a powered surface vessel that ArduRover can steer and
-hold on station. Start with calm-water maneuvering. Waves and engineering
-seakeeping are separate work documented in [WATER.md](WATER.md).
+The first marine push is a powered surface vessel that ArduRover can drive and
+turn in calm water. Station keeping, waves, and engineering seakeeping are
+later experiments; water work is documented in [WATER.md](WATER.md).
 
 ```text
 public boat model -> C++ plant -> headless maneuvers -> ArduRover experiment
@@ -16,12 +16,13 @@ Use Thor Fossen's public Otter USV model as the first reference. The Otter is a
 two-meter twin-hull research vessel with two fixed propellers, making it a good
 match for ArduRover's left/right throttle outputs.
 
-The primary executable reference is
-[`otter.py`](https://github.com/cybergalactic/PythonVehicleSimulator/blob/master/src/python_vehicle_simulator/vehicles/otter.py)
+The primary numerical reference is current
+[`otter.m`](https://github.com/cybergalactic/MSS/blob/master/CRAFT/USV/models/otter.m)
 in the MIT-licensed
-[Python Vehicle Simulator](https://github.com/cybergalactic/PythonVehicleSimulator).
-The [Marine Systems Simulator](https://github.com/cybergalactic/MSS) contains
-the corresponding MATLAB/Octave model and maneuvering examples.
+[Marine Systems Simulator](https://github.com/cybergalactic/MSS). The older
+[Python Otter](https://github.com/cybergalactic/PythonVehicleSimulator/blob/master/src/python_vehicle_simulator/vehicles/otter.py)
+is useful for reading and secondary comparison, but its equations now differ
+from MSS.
 
 The reference includes:
 
@@ -44,7 +45,7 @@ reference equations with hand-tuned maximum-speed and turn-rate gains.
 ## Reference strategy
 
 Implement the equations and parameters as ordinary C++ in this repository.
-Python Vehicle Simulator and MSS remain optional validation tools, not runtime
+MSS and Python Vehicle Simulator remain optional validation tools, not runtime
 dependencies.
 
 The first checks should compare:
@@ -65,15 +66,15 @@ convergence independently.
 Keep physical plant data, ArduRover parameters, and the experiment separate:
 
 ```text
-boat.json       Otter mass, geometry, hydrodynamics, and propellers
+fossen_otter.json  Otter source scalars for mass, geometry, hydrodynamics,
+                   payload, and propellers; C++ derives its matrices
 rover.parm      ArduRover frame, output mapping, and controller parameters
 run.json        initial state, current, environment, and maneuver
 ```
 
 The physical file uses SI units, North-East-Down world axes, and
-Forward-Right-Down body axes. It declares the body origin and the order of each
-marine matrix. Propellers have explicit positions, directions, command maps,
-limits, forward and reverse thrust laws, and response time.
+Forward-Right-Down body axes. It declares the midships body origin and the
+source scalar assumptions. Derived marine matrices stay in C++.
 
 ArduPilot configuration does not belong in the hydrodynamic model. A
 differential-thrust boat normally uses `Throttle Left` and `Throttle Right`;
@@ -115,7 +116,8 @@ added only when an experiment needs them.
 
 ## First useful result
 
-The first result is one bounded ArduRover maneuver using the Otter model, with
-left/right propeller commands, simulator truth, ArduRover estimates, and timing
-health saved together. Straight runs, turns, and zigzags should work headless
-before Unreal is asked to render the same committed boat state.
+The first result is one bounded ArduRover ACRO maneuver using the Otter model,
+with desired and achieved speed and turn rate, left/right propeller commands,
+simulator truth, ArduRover estimates, and timing health saved together. Open-
+loop straight and turning runs work headlessly before Unreal renders the same
+committed boat state.

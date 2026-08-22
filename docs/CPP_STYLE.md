@@ -32,7 +32,9 @@ one function. Keep expressions in the same order as their equations in [AERO.md]
 
 ## Linear algebra
 
-Use the fixed-size aliases from `uvd/core.hpp` for runtime math:
+Use the fixed-size aliases from the model's public core header for runtime
+math. Shared rigid-body aliases live in `uvd/rigid_body.hpp`; marine-only
+six-axis aliases live in `uvd/marine.hpp`:
 
 ```cpp
 using Vector3 = Eigen::Vector3d;

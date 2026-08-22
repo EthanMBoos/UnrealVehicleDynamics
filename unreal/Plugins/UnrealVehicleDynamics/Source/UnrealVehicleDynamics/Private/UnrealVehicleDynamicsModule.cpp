@@ -6,7 +6,7 @@
 #include "Misc/Parse.h"
 #include "Modules/ModuleManager.h"
 #include "PhysicsEngine/PhysicsSettings.h"
-#include "UvdAircraftComponent.h"
+#include "UvdVehicleComponent.h"
 
 class FUnrealVehicleDynamicsModule final : public IModuleInterface {
  public:
@@ -40,19 +40,22 @@ class FUnrealVehicleDynamicsModule final : public IModuleInterface {
     }
     FString TruthPath;
     FParse::Value(FCommandLine::Get(), TEXT("UvdTruth="), TruthPath);
-    AActor* Aircraft = World->SpawnActor<AActor>();
+    const bool OpenLoop =
+        FParse::Param(FCommandLine::Get(), TEXT("UvdOpenLoop"));
+    AActor* Vehicle = World->SpawnActor<AActor>();
     UBoxComponent* Body =
-        NewObject<UBoxComponent>(Aircraft, TEXT("AircraftPhysicsBody"));
+        NewObject<UBoxComponent>(Vehicle, TEXT("VehiclePhysicsBody"));
     Body->SetBoxExtent(FVector{40.0, 6.0, 6.0});
     Body->SetCollisionProfileName(TEXT("PhysicsActor"));
-    Aircraft->SetRootComponent(Body);
+    Vehicle->SetRootComponent(Body);
     Body->RegisterComponent();
     Body->SetSimulatePhysics(true);
 
-    UUvdAircraftComponent* Simulation =
-        NewObject<UUvdAircraftComponent>(Aircraft, TEXT("VehicleDynamics"));
+    UUvdVehicleComponent* Simulation =
+        NewObject<UUvdVehicleComponent>(Vehicle, TEXT("VehicleDynamics"));
     Simulation->RunConfigPath = RunPath;
     Simulation->TruthOutputPath = TruthPath;
+    Simulation->OpenLoop = OpenLoop;
     Simulation->RegisterComponent();
   }
 
