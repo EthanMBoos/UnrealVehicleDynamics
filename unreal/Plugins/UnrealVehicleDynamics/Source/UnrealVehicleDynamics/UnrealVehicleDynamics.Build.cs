@@ -6,7 +6,7 @@ public class UnrealVehicleDynamics : ModuleRules
     public UnrealVehicleDynamics(ReadOnlyTargetRules Target) : base(Target)
     {
         PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
-        CppStandard = CppStandardVersion.Latest;
+        CppStandard = CppStandardVersion.Cpp23;
         bEnableExceptions = true;
         PublicDependencyModuleNames.AddRange(new[] { "Core", "CoreUObject", "Engine" });
         PrivateDependencyModuleNames.AddRange(new[] {

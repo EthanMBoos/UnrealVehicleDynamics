@@ -94,6 +94,25 @@ def build(editor, profile):
         ], check=True)
 
 
+def wait_for_unreal(unreal, truth_path, timeout_s=60):
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if truth_path.is_file() and truth_path.stat().st_size:
+            # The component opens its UDP sockets immediately after its output
+            # files. Give BeginPlay time to finish before SITL sends frame 0.
+            time.sleep(0.5)
+            if unreal.poll() is not None:
+                raise RuntimeError("Unreal exited while UVD was starting")
+            return
+        returncode = unreal.poll()
+        if returncode is not None:
+            raise RuntimeError(
+                f"Unreal exited with status {returncode} before UVD was ready"
+            )
+        time.sleep(0.1)
+    raise RuntimeError(f"Unreal did not become ready within {timeout_s} seconds")
+
+
 def main():
     load_local_env()
     profile_name = sys.argv[1] if len(sys.argv) > 1 else "plane"
@@ -132,6 +151,13 @@ def main():
         except KeyboardInterrupt:
             unreal.terminate()
             return unreal.wait()
+
+    try:
+        wait_for_unreal(unreal, run_dir / "truth.csv")
+    except BaseException:
+        unreal.terminate()
+        unreal.wait()
+        raise
 
     docker_command = [
         "docker", "run", "--rm", "--name", container_name,
