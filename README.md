@@ -1,7 +1,41 @@
 # UnrealVehicleDynamics
 
-UnrealVehicleDynamics runs C++ vehicle models headlessly or inside Unreal
-Engine with Cesium and ArduPilot SITL. The repository includes three examples:
+The central goal of UnrealVehicleDynamics is to reproduce demanding reference
+demonstrations from open-source autopilot projects in one instrumented Unreal
+simulation. Each demonstration should be runnable, inspectable, and published
+with enough plant truth, controller data, and timing evidence to verify its
+correctness. The work starts with ArduPilot, then repeats equivalent cases with
+PX4 so their behavior can be compared on common scenarios.
+
+## Demonstration roadmap
+
+The main ArduPilot target is a complete
+[moving-platform VTOL takeoff and landing](https://ardupilot.org/plane/docs/common-ship-landing.html):
+an ArduPilot QuadPlane will launch from, track, approach, land on, and take off
+again from the simulated ArduRover-controlled boat. This requires adding a VTOL
+plant and aircraft, passing the boat's moving-platform position to it, and
+representing a usable landing deck and approach environment in Unreal.
+
+Two other demanding targets broaden the controls evidence:
+
+- follow ArduPilot's documented
+  [scripted aerobatics](https://ardupilot.org/plane/docs/common-scripted-aerobatics-4.4.html),
+  including its Lua-driven maneuvers and complete schedules, and report the
+  commanded and flown trajectories; and
+- build an Unreal drone-racing course and run a repeatable autonomous lap that
+  exposes trajectory tracking, control effort, saturation, and timing.
+
+After the ArduPilot demonstrations work and their reports are published, the
+same classes of demonstration will be implemented with PX4. Comparisons should
+use the same plant, environment, initial conditions, and measurements wherever
+the controller architectures permit. These are reproducible implementation and
+controls benchmarks; physical-fidelity claims still require external data.
+
+## Current baseline
+
+UnrealVehicleDynamics currently runs C++ vehicle models headlessly or inside
+Unreal Engine with Cesium and ArduPilot SITL. The repository includes three
+examples:
 
 - a BYU/MAVSim Aerosonde controlled by ArduPlane; and
 - a Fossen Otter surface vessel controlled by ArduRover; and
