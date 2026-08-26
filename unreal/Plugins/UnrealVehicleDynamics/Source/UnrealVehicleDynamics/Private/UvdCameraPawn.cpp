@@ -6,6 +6,8 @@
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
+#include "Framework/Application/NavigationConfig.h"
+#include "Framework/Application/SlateApplication.h"
 #include "GameFramework/PlayerController.h"
 #include "InputCoreTypes.h"
 #include "UvdVehicleComponent.h"
@@ -30,6 +32,19 @@ const TCHAR* ModeName(EUvdCameraMode Mode) {
   return TEXT("Unknown");
 }
 
+TArray<AActor*> VehicleTargets(UWorld* World) {
+  TArray<AActor*> Vehicles;
+  for (TActorIterator<AActor> Actor(World); Actor; ++Actor) {
+    if (Actor->FindComponentByClass<UUvdVehicleComponent>()) {
+      Vehicles.Add(*Actor);
+    }
+  }
+  Vehicles.Sort([](const AActor& Left, const AActor& Right) {
+    return Left.GetName() < Right.GetName();
+  });
+  return Vehicles;
+}
+
 }  // namespace
 
 AUvdCameraPawn::AUvdCameraPawn() {
@@ -48,17 +63,36 @@ AUvdCameraPawn::AUvdCameraPawn() {
 
 void AUvdCameraPawn::BeginPlay() {
   Super::BeginPlay();
+  if (FSlateApplication::IsInitialized()) {
+    // This game reserves Tab for vehicle selection. Without this, Slate moves
+    // native keyboard focus after the first press and later Tabs never reach
+    // the pawn even in game-only input mode.
+    TSharedRef<FNavigationConfig> Navigation =
+        FSlateApplication::Get().GetNavigationConfig();
+    PreviousTabNavigation = Navigation->bTabNavigation;
+    Navigation->bTabNavigation = false;
+    ChangedTabNavigation = true;
+  }
   FindTarget();
   RefreshFraming(true);
   AttachToTarget();
 }
 
+void AUvdCameraPawn::EndPlay(const EEndPlayReason::Type EndPlayReason) {
+  if (ChangedTabNavigation && FSlateApplication::IsInitialized()) {
+    FSlateApplication::Get().GetNavigationConfig()->bTabNavigation =
+        PreviousTabNavigation;
+  }
+  Super::EndPlay(EndPlayReason);
+}
+
 void AUvdCameraPawn::PossessedBy(AController* NewController) {
   Super::PossessedBy(NewController);
   if (APlayerController* Player = Cast<APlayerController>(NewController)) {
-    FInputModeGameAndUI InputMode;
-    InputMode.SetHideCursorDuringCapture(false);
-    Player->SetInputMode(InputMode);
+    // GameAndUI lets Slate claim Tab for widget navigation after its first
+    // press. Keep keyboard focus on the viewport so vehicle cycling remains
+    // repeatable; the cursor can still stay visible in game-only mode.
+    Player->SetInputMode(FInputModeGameOnly{});
     Player->SetShowMouseCursor(true);
   }
 }
@@ -79,7 +113,7 @@ void AUvdCameraPawn::SetupPlayerInputComponent(
   ShowMessage(
       TEXT("Camera ready: 1 chase  2 orbit  3 onboard  4 side  |  "
            "RMB orbit  wheel zoom  |  "
-           "C cycle  F vehicle  Space pause"));
+           "C mode  Tab vehicle  F reacquire  Space pause"));
 
   PlayerInputComponent
       ->BindKey(EKeys::One, IE_Pressed, this, &AUvdCameraPawn::SelectChase)
@@ -95,6 +129,9 @@ void AUvdCameraPawn::SetupPlayerInputComponent(
       .bExecuteWhenPaused = true;
   PlayerInputComponent
       ->BindKey(EKeys::C, IE_Pressed, this, &AUvdCameraPawn::CycleMode)
+      .bExecuteWhenPaused = true;
+  PlayerInputComponent
+      ->BindKey(EKeys::Tab, IE_Pressed, this, &AUvdCameraPawn::CycleTarget)
       .bExecuteWhenPaused = true;
   PlayerInputComponent
       ->BindKey(EKeys::F, IE_Pressed, this, &AUvdCameraPawn::Reacquire)
@@ -127,10 +164,17 @@ void AUvdCameraPawn::SetupPlayerInputComponent(
 }
 
 void AUvdCameraPawn::SetTarget(AActor* InTarget) {
+  if (!InTarget) {
+    return;
+  }
   DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
   Target = InTarget;
   RefreshFraming(true);
   AttachToTarget();
+  const FString Message =
+      FString::Printf(TEXT("Camera target: %s"), *InTarget->GetName());
+  UE_LOG(LogUvdCamera, Display, TEXT("%s"), *Message);
+  ShowMessage(Message);
 }
 
 void AUvdCameraPawn::SelectChase() { SetMode(EUvdCameraMode::Chase); }
@@ -145,6 +189,16 @@ void AUvdCameraPawn::SelectSide() { SetMode(EUvdCameraMode::Side); }
 
 void AUvdCameraPawn::CycleMode() {
   SetMode(static_cast<EUvdCameraMode>((static_cast<uint8>(Mode) + 1) % 4));
+}
+
+void AUvdCameraPawn::CycleTarget() {
+  const TArray<AActor*> Vehicles = VehicleTargets(GetWorld());
+  if (Vehicles.IsEmpty()) {
+    ShowMessage(TEXT("Could not find a vehicle camera target"));
+    return;
+  }
+  const int32 Current = Vehicles.IndexOfByKey(Target.Get());
+  SetTarget(Vehicles[(Current + 1) % Vehicles.Num()]);
 }
 
 void AUvdCameraPawn::Reacquire() { SetMode(EUvdCameraMode::Chase); }
@@ -187,9 +241,7 @@ void AUvdCameraPawn::BeginLook() {
 void AUvdCameraPawn::EndLook() {
   Looking = false;
   if (APlayerController* Player = Cast<APlayerController>(GetController())) {
-    FInputModeGameAndUI InputMode;
-    InputMode.SetHideCursorDuringCapture(false);
-    Player->SetInputMode(InputMode);
+    Player->SetInputMode(FInputModeGameOnly{});
     Player->SetShowMouseCursor(true);
     Player->SetMouseLocation(SavedMouseX, SavedMouseY);
   }
@@ -231,11 +283,9 @@ void AUvdCameraPawn::LookVertical(float Value) {
 }
 
 void AUvdCameraPawn::FindTarget() {
-  for (TActorIterator<AActor> Actor(GetWorld()); Actor; ++Actor) {
-    if (Actor->FindComponentByClass<UUvdVehicleComponent>()) {
-      SetTarget(*Actor);
-      return;
-    }
+  const TArray<AActor*> Vehicles = VehicleTargets(GetWorld());
+  if (!Vehicles.IsEmpty()) {
+    SetTarget(Vehicles[0]);
   }
 }
 

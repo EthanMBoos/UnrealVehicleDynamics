@@ -54,7 +54,14 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
+  find_package(Python3 REQUIRED COMPONENTS Interpreter)
   add_executable(fossen_otter_test tests/fossen_otter_test.cpp)
   target_link_libraries(fossen_otter_test PRIVATE uvd_core)
+  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    target_compile_options(fossen_otter_test PRIVATE -Wall -Wextra -Wpedantic
+      -Wno-deprecated-declarations)
+  endif()
   add_test(NAME fossen_otter COMMAND fossen_otter_test)
+  add_test(NAME dual_contract
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/dual_contract_test.py)
 endif()

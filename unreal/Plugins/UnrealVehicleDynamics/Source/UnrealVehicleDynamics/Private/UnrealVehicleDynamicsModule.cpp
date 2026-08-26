@@ -29,20 +29,17 @@ class FUnrealVehicleDynamicsModule final : public IModuleInterface {
   }
 
  private:
-  void OnWorldInitialized(UWorld* World,
-                          const UWorld::InitializationValues) const {
-    if (!World || !World->IsGameWorld()) {
+  static void SpawnVehicle(UWorld* World, const FName Name,
+                           const FString& RunPath, const FString& TruthPath,
+                           const bool ConfigureWorld,
+                           const bool OpenLoop = false,
+                           const int32 ReleaseParticipants = 1) {
+    FActorSpawnParameters SpawnParameters;
+    SpawnParameters.Name = Name;
+    AActor* Vehicle = World->SpawnActor<AActor>(SpawnParameters);
+    if (!Vehicle) {
       return;
     }
-    FString RunPath;
-    if (!FParse::Value(FCommandLine::Get(), TEXT("UvdRun="), RunPath)) {
-      return;
-    }
-    FString TruthPath;
-    FParse::Value(FCommandLine::Get(), TEXT("UvdTruth="), TruthPath);
-    const bool OpenLoop =
-        FParse::Param(FCommandLine::Get(), TEXT("UvdOpenLoop"));
-    AActor* Vehicle = World->SpawnActor<AActor>();
     UBoxComponent* Body =
         NewObject<UBoxComponent>(Vehicle, TEXT("VehiclePhysicsBody"));
     Body->SetBoxExtent(FVector{40.0, 6.0, 6.0});
@@ -56,7 +53,43 @@ class FUnrealVehicleDynamicsModule final : public IModuleInterface {
     Simulation->RunConfigPath = RunPath;
     Simulation->TruthOutputPath = TruthPath;
     Simulation->OpenLoop = OpenLoop;
+    Simulation->ConfigureWorld = ConfigureWorld;
+    Simulation->SynchronizedReleaseParticipants = ReleaseParticipants;
     Simulation->RegisterComponent();
+  }
+
+  void OnWorldInitialized(UWorld* World,
+                          const UWorld::InitializationValues) const {
+    if (!World || !World->IsGameWorld()) {
+      return;
+    }
+    FString PlaneRunPath;
+    FString OtterRunPath;
+    if (FParse::Value(FCommandLine::Get(), TEXT("UvdPlaneRun="),
+                      PlaneRunPath) &&
+        FParse::Value(FCommandLine::Get(), TEXT("UvdOtterRun="),
+                      OtterRunPath)) {
+      FString PlaneTruthPath;
+      FString OtterTruthPath;
+      FParse::Value(FCommandLine::Get(), TEXT("UvdPlaneTruth="),
+                    PlaneTruthPath);
+      FParse::Value(FCommandLine::Get(), TEXT("UvdOtterTruth="),
+                    OtterTruthPath);
+      SpawnVehicle(World, TEXT("UvdOtter"), OtterRunPath, OtterTruthPath, true,
+                   false, 2);
+      SpawnVehicle(World, TEXT("UvdPlane"), PlaneRunPath, PlaneTruthPath, false,
+                   false, 2);
+      return;
+    }
+    FString RunPath;
+    if (!FParse::Value(FCommandLine::Get(), TEXT("UvdRun="), RunPath)) {
+      return;
+    }
+    FString TruthPath;
+    FParse::Value(FCommandLine::Get(), TEXT("UvdTruth="), TruthPath);
+    const bool OpenLoop =
+        FParse::Param(FCommandLine::Get(), TEXT("UvdOpenLoop"));
+    SpawnVehicle(World, TEXT("UvdVehicle"), RunPath, TruthPath, true, OpenLoop);
   }
 
   FDelegateHandle WorldDelegate;

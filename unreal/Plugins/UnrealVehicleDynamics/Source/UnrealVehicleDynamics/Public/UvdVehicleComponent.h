@@ -21,6 +21,8 @@ class UNREALVEHICLEDYNAMICS_API UUvdVehicleComponent : public UActorComponent {
   FString RunConfigPath;
   FString TruthOutputPath;
   bool OpenLoop = false;
+  bool ConfigureWorld = true;
+  int32 SynchronizedReleaseParticipants = 1;
 
   void SetSimulationPaused(bool Paused);
   bool IsSimulationPaused() const { return SimulationPaused; }

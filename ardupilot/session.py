@@ -79,34 +79,77 @@ def main():
         "udpin:0.0.0.0:14550", source_system=255, autoreconnect=False
     )
     run_dir = Path(os.environ.get("UVD_RUN_DIR", "/run"))
+    ready_path = (
+        Path(os.environ["UVD_READY_FILE"]) if "UVD_READY_FILE" in os.environ else None
+    )
+    start_path = (
+        Path(os.environ["UVD_START_FILE"]) if "UVD_START_FILE" in os.environ else None
+    )
+    done_path = (
+        Path(os.environ["UVD_DONE_FILE"]) if "UVD_DONE_FILE" in os.environ else None
+    )
+    finish_path = (
+        Path(os.environ["UVD_FINISH_FILE"]) if "UVD_FINISH_FILE" in os.environ else None
+    )
+    duration_s = float(os.environ.get("UVD_DURATION_S", "12.0"))
     ardupilot_dir = run_dir / "ardupilot"
     ardupilot_dir.mkdir(parents=True, exist_ok=True)
     telemetry_file = (run_dir / "telemetry.csv").open("w", newline="")
     telemetry = csv.writer(telemetry_file)
-    telemetry.writerow([
-        "time_s", "phase", "roll_pwm", "pitch_pwm", "throttle_pwm",
-        "rudder_pwm", "mode", "armed", "roll_est_deg", "pitch_est_deg",
-        "yaw_est_deg",
-    ])
+    telemetry.writerow(
+        [
+            "time_s",
+            "phase",
+            "roll_pwm",
+            "pitch_pwm",
+            "throttle_pwm",
+            "rudder_pwm",
+            "mode",
+            "armed",
+            "roll_est_deg",
+            "pitch_est_deg",
+            "yaw_est_deg",
+        ]
+    )
     telemetry_file.flush()
     simstate_file = (run_dir / "simstate.csv").open("w", newline="")
     simstate = csv.writer(simstate_file)
-    simstate.writerow([
-        "attitude_clock_s", "roll_received_deg", "pitch_received_deg",
-        "yaw_received_deg", "ax_received_mps2", "ay_received_mps2",
-        "az_received_mps2", "p_received_radps", "q_received_radps",
-        "r_received_radps",
-    ])
+    simstate.writerow(
+        [
+            "attitude_clock_s",
+            "roll_received_deg",
+            "pitch_received_deg",
+            "yaw_received_deg",
+            "ax_received_mps2",
+            "ay_received_mps2",
+            "az_received_mps2",
+            "p_received_radps",
+            "q_received_radps",
+            "r_received_radps",
+        ]
+    )
     simstate_file.flush()
     plane = subprocess.Popen(
         [
             "/opt/ardupilot/arduplane",
-            "--model", f"JSON:{sim_address}",
-            "--home", os.environ["UVD_HOME"],
-            "--speedup", "1",
-            "--rate", os.environ.get("UVD_RATE_HZ", "120"),
-            "--serial0", "udpclient:127.0.0.1:14550",
-            "--defaults", "/opt/ardupilot/uvd.parm",
+            "--model",
+            f"JSON:{sim_address}",
+            "--home",
+            os.environ["UVD_HOME"],
+            "--speedup",
+            "1",
+            "--rate",
+            os.environ.get("UVD_RATE_HZ", "120"),
+            "--sim-port-in",
+            os.environ.get("UVD_SIM_PORT_IN", "9003"),
+            "--sim-port-out",
+            os.environ.get("UVD_SIM_PORT_OUT", "9002"),
+            "--sysid",
+            os.environ.get("UVD_SYSID", "1"),
+            "--serial0",
+            "udpclient:127.0.0.1:14550",
+            "--defaults",
+            "/opt/ardupilot/uvd.parm",
         ],
         cwd=ardupilot_dir,
     )
@@ -144,39 +187,59 @@ def main():
                     elapsed_s = (
                         int(latest_attitude.time_boot_ms) - release_boot_ms
                     ) / 1000.0
-                    if 0.0 <= elapsed_s <= 12.0:
-                        simstate.writerow([
-                            f"{elapsed_s:.3f}",
-                            f"{math.degrees(message.roll):.6f}",
-                            f"{math.degrees(message.pitch):.6f}",
-                            f"{math.degrees(message.yaw):.6f}",
-                            f"{message.xacc:.9f}",
-                            f"{message.yacc:.9f}",
-                            f"{message.zacc:.9f}",
-                            f"{message.xgyro:.9f}",
-                            f"{message.ygyro:.9f}",
-                            f"{message.zgyro:.9f}",
-                        ])
+                    if 0.0 <= elapsed_s <= duration_s:
+                        simstate.writerow(
+                            [
+                                f"{elapsed_s:.3f}",
+                                f"{math.degrees(message.roll):.6f}",
+                                f"{math.degrees(message.pitch):.6f}",
+                                f"{math.degrees(message.yaw):.6f}",
+                                f"{message.xacc:.9f}",
+                                f"{message.yacc:.9f}",
+                                f"{message.zacc:.9f}",
+                                f"{message.xgyro:.9f}",
+                                f"{message.ygyro:.9f}",
+                                f"{message.zgyro:.9f}",
+                            ]
+                        )
                         simstate_file.flush()
                 elif kind == "ATTITUDE":
                     latest_attitude = message
                     if released:
-                        elapsed_s = (int(message.time_boot_ms) - release_boot_ms) / 1000.0
-                        if elapsed_s >= 12.2:
-                            completed = True
-                            break
+                        elapsed_s = (
+                            int(message.time_boot_ms) - release_boot_ms
+                        ) / 1000.0
+                        reached_completion = (
+                            elapsed_s >= duration_s + 0.2 and not completed
+                        )
                         next_phase, next_roll_pwm = roll_command(elapsed_s)
                         if (next_phase, next_roll_pwm) != (phase, roll_pwm):
                             phase, roll_pwm = next_phase, next_roll_pwm
                             rc_override(connection, roll_pwm, 1775)
-                        telemetry.writerow([
-                            f"{elapsed_s:.3f}", phase, roll_pwm, 1500, 1775, 1500,
-                            mode, int(armed),
-                            f"{math.degrees(message.roll):.6f}",
-                            f"{math.degrees(message.pitch):.6f}",
-                            f"{math.degrees(message.yaw):.6f}",
-                        ])
+                        telemetry.writerow(
+                            [
+                                f"{elapsed_s:.3f}",
+                                phase,
+                                roll_pwm,
+                                1500,
+                                1775,
+                                1500,
+                                mode,
+                                int(armed),
+                                f"{math.degrees(message.roll):.6f}",
+                                f"{math.degrees(message.pitch):.6f}",
+                                f"{math.degrees(message.yaw):.6f}",
+                            ]
+                        )
                         telemetry_file.flush()
+                        if reached_completion:
+                            completed = True
+                            if done_path:
+                                done_path.write_text("done\n")
+                                if finish_path is None:
+                                    break
+                            else:
+                                break
 
             now = time.monotonic()
             if connection.target_system and not streams_requested:
@@ -186,12 +249,8 @@ def main():
                 request_message(
                     connection, mavutil.mavlink.MAVLINK_MSG_ID_EKF_STATUS_REPORT, 5
                 )
-                request_message(
-                    connection, mavutil.mavlink.MAVLINK_MSG_ID_ATTITUDE, 20
-                )
-                request_message(
-                    connection, mavutil.mavlink.MAVLINK_MSG_ID_SIMSTATE, 20
-                )
+                request_message(connection, mavutil.mavlink.MAVLINK_MSG_ID_ATTITUDE, 20)
+                request_message(connection, mavutil.mavlink.MAVLINK_MSG_ID_SIMSTATE, 20)
                 streams_requested = True
             if connection.target_system and now - last_request >= 0.5:
                 rc_override(connection, roll_pwm, 1775 if armed else 1000)
@@ -219,15 +278,28 @@ def main():
                             0.0,
                         )
                     elif not released and latest_attitude is not None:
-                        release_boot_ms = int(latest_attitude.time_boot_ms)
-                        phase, roll_pwm = roll_command(0.0)
-                        rc_override(connection, roll_pwm, 1775)
-                        release_unreal(
-                            host, int(os.environ.get("UVD_CONTROL_PORT", "9003"))
-                        )
-                        print("ArduPlane is armed in FBWA; releasing vehicle dynamics", flush=True)
-                        released = True
+                        if ready_path and not ready_path.exists():
+                            ready_path.write_text("ready\n")
+                            print(
+                                "ArduPlane is armed in FBWA; waiting for scenario start",
+                                flush=True,
+                            )
+                        if not start_path or start_path.exists():
+                            release_boot_ms = int(latest_attitude.time_boot_ms)
+                            phase, roll_pwm = roll_command(0.0)
+                            rc_override(connection, roll_pwm, 1775)
+                            release_unreal(
+                                host,
+                                int(os.environ.get("UVD_CONTROL_PORT", "9003")),
+                            )
+                            print(
+                                "ArduPlane is armed in FBWA; releasing vehicle dynamics",
+                                flush=True,
+                            )
+                            released = True
                 last_request = now
+            if completed and finish_path and finish_path.is_file():
+                break
     finally:
         if plane.poll() is None:
             plane.terminate()

@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """Validate and plot the bounded ArduRover ACRO boat run."""
 
-import csv
 import html
 import math
 from pathlib import Path
-import statistics
 import sys
 
 import plotly.graph_objects as go
 import plotly.io as pio
 from plotly.subplots import make_subplots
+
+from report_common import lockstep_summary, read_rows
 
 
 BLUE = "#2563eb"
@@ -19,57 +19,21 @@ SLATE = "#64748b"
 ORANGE = "#ea580c"
 
 
-def read_rows(path):
-    with path.open(newline="") as source:
-        return list(csv.DictReader(source))
-
-
 def values(rows, field):
     return [float(row[field]) for row in rows]
 
 
 def rms_difference(rows, target, actual):
     return math.sqrt(
-        sum((float(row[target]) - float(row[actual])) ** 2 for row in rows)
-        / len(rows)
+        sum((float(row[target]) - float(row[actual])) ** 2 for row in rows) / len(rows)
     )
 
 
 def saturation_percent(rows, field):
     saturated = sum(
-        float(row[field]) <= 1000.0 or float(row[field]) >= 2000.0
-        for row in rows
+        float(row[field]) <= 1000.0 or float(row[field]) >= 2000.0 for row in rows
     )
     return 100.0 * saturated / len(rows)
-
-
-def lockstep_summary(exchange):
-    if len(exchange) < 2:
-        raise RuntimeError("exchange log does not contain enough controller frames")
-    frames = [int(row["servo_frame"]) for row in exchange]
-    steps = [int(row["step"]) for row in exchange]
-    physics_times = values(exchange, "physics_time_s")
-    rates = {int(row["frame_rate_hz"]) for row in exchange}
-    time_steps = [right - left for left, right in zip(physics_times, physics_times[1:])]
-    rate_hz = next(iter(rates)) if len(rates) == 1 else 0
-    fixed_dt_s = statistics.median(time_steps)
-    missed = max(int(row["missed_frames"]) for row in exchange)
-    duplicates = max(int(row["duplicate_frames"]) for row in exchange)
-    verified = (
-        all(right - left == 1 for left, right in zip(frames, frames[1:]))
-        and all(right - left == 1 for left, right in zip(steps, steps[1:]))
-        and missed == 0
-        and duplicates == 0
-        and rate_hz > 0
-        and abs(fixed_dt_s - 1.0 / rate_hz) < 1.0e-6
-    )
-    return {
-        "verified": verified,
-        "frames": len(exchange),
-        "rate_hz": rate_hz,
-        "missed": missed,
-        "duplicates": duplicates,
-    }
 
 
 def make_plot(truth, exchange, telemetry):
@@ -102,54 +66,111 @@ def make_plot(truth, exchange, telemetry):
     ]
     active_time = values(active, "time_s")
     truth_time = values(truth, "time_s")
-    figure.add_trace(go.Scatter(
-        x=active_time, y=values(active, "speed_target_mps"),
-        name="Speed target", line={"color": SLATE, "width": 2, "dash": "dash"},
-    ), row=1, col=1)
-    figure.add_trace(go.Scatter(
-        x=active_time, y=values(active, "speed_estimate_mps"),
-        name="ArduRover speed", line={"color": ORANGE, "width": 2},
-    ), row=1, col=1)
-    figure.add_trace(go.Scatter(
-        x=truth_time, y=values(truth, "u_mps"), name="Plant forward speed",
-        line={"color": BLUE, "width": 2},
-    ), row=1, col=1)
-    figure.add_trace(go.Scatter(
-        x=active_time, y=values(active, "yaw_rate_target_degps"),
-        name="Yaw-rate target",
-        line={"color": SLATE, "width": 2, "dash": "dash"},
-    ), row=2, col=1)
-    figure.add_trace(go.Scatter(
-        x=active_time, y=values(active, "yaw_rate_estimate_degps"),
-        name="ArduRover yaw rate", line={"color": ORANGE, "width": 2},
-    ), row=2, col=1)
-    figure.add_trace(go.Scatter(
-        x=truth_time,
-        y=[math.degrees(value) for value in values(truth, "r_radps")],
-        name="Plant yaw rate", line={"color": BLUE, "width": 2},
-    ), row=2, col=1)
+    figure.add_trace(
+        go.Scatter(
+            x=active_time,
+            y=values(active, "speed_target_mps"),
+            name="Speed target",
+            line={"color": SLATE, "width": 2, "dash": "dash"},
+        ),
+        row=1,
+        col=1,
+    )
+    figure.add_trace(
+        go.Scatter(
+            x=active_time,
+            y=values(active, "speed_estimate_mps"),
+            name="ArduRover speed",
+            line={"color": ORANGE, "width": 2},
+        ),
+        row=1,
+        col=1,
+    )
+    figure.add_trace(
+        go.Scatter(
+            x=truth_time,
+            y=values(truth, "u_mps"),
+            name="Plant forward speed",
+            line={"color": BLUE, "width": 2},
+        ),
+        row=1,
+        col=1,
+    )
+    figure.add_trace(
+        go.Scatter(
+            x=active_time,
+            y=values(active, "yaw_rate_target_degps"),
+            name="Yaw-rate target",
+            line={"color": SLATE, "width": 2, "dash": "dash"},
+        ),
+        row=2,
+        col=1,
+    )
+    figure.add_trace(
+        go.Scatter(
+            x=active_time,
+            y=values(active, "yaw_rate_estimate_degps"),
+            name="ArduRover yaw rate",
+            line={"color": ORANGE, "width": 2},
+        ),
+        row=2,
+        col=1,
+    )
+    figure.add_trace(
+        go.Scatter(
+            x=truth_time,
+            y=[math.degrees(value) for value in values(truth, "r_radps")],
+            name="Plant yaw rate",
+            line={"color": BLUE, "width": 2},
+        ),
+        row=2,
+        col=1,
+    )
     time_exchange = values(exchange, "time_s")
-    figure.add_trace(go.Scatter(
-        x=time_exchange, y=values(exchange, "left_pwm"), name="Left motor",
-        line={"color": BLUE, "width": 2},
-    ), row=3, col=1)
-    figure.add_trace(go.Scatter(
-        x=time_exchange, y=values(exchange, "right_pwm"), name="Right motor",
-        line={"color": RED, "width": 2},
-    ), row=3, col=1)
-    figure.add_trace(go.Scatter(
-        x=values(truth, "east_m"), y=values(truth, "north_m"),
-        name="Plant path", mode="lines", line={"color": BLUE, "width": 3},
-    ), row=4, col=1)
+    figure.add_trace(
+        go.Scatter(
+            x=time_exchange,
+            y=values(exchange, "left_pwm"),
+            name="Left motor",
+            line={"color": BLUE, "width": 2},
+        ),
+        row=3,
+        col=1,
+    )
+    figure.add_trace(
+        go.Scatter(
+            x=time_exchange,
+            y=values(exchange, "right_pwm"),
+            name="Right motor",
+            line={"color": RED, "width": 2},
+        ),
+        row=3,
+        col=1,
+    )
+    figure.add_trace(
+        go.Scatter(
+            x=values(truth, "east_m"),
+            y=values(truth, "north_m"),
+            name="Plant path",
+            mode="lines",
+            line={"color": BLUE, "width": 3},
+        ),
+        row=4,
+        col=1,
+    )
     for limit in (1000, 2000):
         figure.add_hline(
-            y=limit, row=3, col=1,
+            y=limit,
+            row=3,
+            col=1,
             line={"color": "#94a3b8", "width": 1, "dash": "dot"},
         )
     for boundary in (2, 8, 14, 18):
         for row in range(1, 4):
             figure.add_vline(
-                x=boundary, row=row, col=1,
+                x=boundary,
+                row=row,
+                col=1,
                 line={"color": "#cbd5e1", "width": 1, "dash": "dot"},
             )
     figure.update_xaxes(title_text="Simulation time (s)", row=3, col=1)
@@ -178,9 +199,9 @@ def main(run_dir):
         raise RuntimeError("boat run did not produce truth, exchange, and telemetry")
     timing = lockstep_summary(exchange)
     phases = {row["phase"] for row in telemetry}
-    phases_complete = {
-        "settle", "forward", "turn-right", "recover", "stop"
-    }.issubset(phases)
+    phases_complete = {"settle", "forward", "turn-right", "recover", "stop"}.issubset(
+        phases
+    )
     finite = all(
         math.isfinite(float(value))
         for row in truth
@@ -203,30 +224,35 @@ def main(run_dir):
         )
     ]
     controller_signals_present = bool(active)
-    active_exchange = [
-        row for row in exchange if 2.0 <= float(row["time_s"]) < 18.0
-    ]
+    active_exchange = [row for row in exchange if 2.0 <= float(row["time_s"]) < 18.0]
     if not active_exchange:
         raise RuntimeError("exchange log is missing the active maneuver")
-    speed_rms = rms_difference(active, "speed_target_mps", "speed_estimate_mps") \
-        if active else math.nan
-    yaw_rate_rms = rms_difference(
-        active, "yaw_rate_target_degps", "yaw_rate_estimate_degps"
-    ) if active else math.nan
+    speed_rms = (
+        rms_difference(active, "speed_target_mps", "speed_estimate_mps")
+        if active
+        else math.nan
+    )
+    yaw_rate_rms = (
+        rms_difference(active, "yaw_rate_target_degps", "yaw_rate_estimate_degps")
+        if active
+        else math.nan
+    )
     left_saturation = saturation_percent(active_exchange, "left_pwm")
     right_saturation = saturation_percent(active_exchange, "right_pwm")
     checks = {
         "Controller exchange remained in lockstep": timing["verified"],
         "All plant values remained finite": finite,
         "All maneuver phases were recorded": phases_complete,
-        "Speed and yaw-rate controller signals were recorded":
-            controller_signals_present,
+        "Speed and yaw-rate controller signals were recorded": controller_signals_present,
     }
     complete = all(checks.values())
     cards = [
         ("Lockstep", "Verified" if timing["verified"] else "Failed"),
         ("Controller exchange", f"{timing['frames']} @ {timing['rate_hz']} Hz"),
-        ("Frame faults", f"{timing['missed']} missed · {timing['duplicates']} duplicate"),
+        (
+            "Frame faults",
+            f"{timing['missed']} missed · {timing['duplicates']} duplicate",
+        ),
         ("Speed RMS difference", f"{speed_rms:.2f} m/s"),
         ("Yaw-rate RMS difference", f"{yaw_rate_rms:.2f}°/s"),
         ("Left motor saturation", f"{left_saturation:.1f}%"),

@@ -13,6 +13,7 @@
 #include "Engine/StaticMesh.h"
 #include "GameFramework/Actor.h"
 #include "GameFramework/WorldSettings.h"
+#include "HAL/CriticalSection.h"
 #include "HAL/FileManager.h"
 #include "HAL/PlatformFile.h"
 #include "HAL/PlatformFileManager.h"
@@ -22,6 +23,7 @@
 #include "Materials/MaterialInterface.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
+#include "Misc/ScopeLock.h"
 #include "Physics/Experimental/PhysInterface_Chaos.h"
 #include "Physics/Experimental/PhysicsThreadLibrary.h"
 #include "PhysicsEngine/BodyInstance.h"
@@ -79,6 +81,7 @@ struct FUvdVehicleRuntime {
   FUvdVisualConfiguration Visual;
   double OriginAltitudeMslM = 0.0;
   double FixedDtS = 1.0 / 120.0;
+  double DurationS = 0.0;
   int64 TilesetAssetId = 1;
   uint16 ControllerPort = 9002;
   uint16 ControlPort = 9003;
@@ -90,12 +93,17 @@ struct FUvdVehicleRuntime {
   uint16 ControllerFrameRateHz = 0;
   uint16 ControllerPwm[4] = {0, 0, 0, 0};
   uint64 Step = 0;
+  uint64 PhysicsStep = 0;
   uint64 ReleaseStep = 0;
+  double PhysicsTimeS = 0.0;
   uint64 MissedControllerFrames = 0;
   uint64 DuplicateControllerFrames = 0;
   bool HasFrame = false;
   bool HasReply = false;
   bool Released = false;
+  bool ReleaseRequested = false;
+  bool ReleaseBarrierRegistered = false;
+  int32 ReleaseParticipants = 1;
   bool Failed = false;
   bool IgnoreDuplicateFramesUntilAdvance = false;
   bool OpenLoop = false;
@@ -105,6 +113,41 @@ struct FUvdVehicleRuntime {
 };
 
 namespace {
+
+struct FUvdReleaseBarrier {
+  FCriticalSection Mutex;
+  int32 Registered = 0;
+  int32 Requested = 0;
+  double TargetSimTimeS = -1.0;
+};
+
+FUvdReleaseBarrier ReleaseBarrier;
+
+void RegisterReleaseBarrier(FUvdVehicleRuntime& Runtime) {
+  if (Runtime.ReleaseParticipants <= 1) {
+    return;
+  }
+  FScopeLock Lock(&ReleaseBarrier.Mutex);
+  if (ReleaseBarrier.Registered == 0) {
+    ReleaseBarrier.Requested = 0;
+    ReleaseBarrier.TargetSimTimeS = -1.0;
+  }
+  ++ReleaseBarrier.Registered;
+  Runtime.ReleaseBarrierRegistered = true;
+}
+
+void UnregisterReleaseBarrier(FUvdVehicleRuntime& Runtime) {
+  if (!Runtime.ReleaseBarrierRegistered) {
+    return;
+  }
+  FScopeLock Lock(&ReleaseBarrier.Mutex);
+  --ReleaseBarrier.Registered;
+  if (ReleaseBarrier.Registered == 0) {
+    ReleaseBarrier.Requested = 0;
+    ReleaseBarrier.TargetSimTimeS = -1.0;
+  }
+  Runtime.ReleaseBarrierRegistered = false;
+}
 
 const uvd::Matrix3 NedToUnreal =
     (uvd::Matrix3() << 0.0, 1.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, -1.0)
@@ -518,22 +561,52 @@ void CloseSockets(FUvdVehicleRuntime& Runtime) {
   }
 }
 
-void PollRelease(FUvdVehicleRuntime& Runtime) {
+void CommitRelease(FUvdVehicleRuntime& Runtime) {
+  Runtime.Released = true;
+  Runtime.ReleaseStep = Runtime.Step;
+  Runtime.MissedControllerFrames = 0;
+  Runtime.DuplicateControllerFrames = 0;
+  UE_LOG(LogUvdVehicle, Display,
+         TEXT("ArduPilot armed; controller now drives the vehicle"));
+}
+
+void PollRelease(FUvdVehicleRuntime& Runtime, double SimTimeS) {
   uint32 Pending = 0;
-  while (!Runtime.Released && Runtime.ControlSocket->HasPendingData(Pending)) {
+  while (!Runtime.ReleaseRequested &&
+         Runtime.ControlSocket->HasPendingData(Pending)) {
     uint8 Data[32];
     int32 Read = 0;
     TSharedRef<FInternetAddr> Sender =
         ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->CreateInternetAddr();
     if (Runtime.ControlSocket->RecvFrom(Data, sizeof(Data), Read, *Sender) &&
         Read >= 7 && FMemory::Memcmp(Data, "release", 7) == 0) {
-      Runtime.Released = true;
-      Runtime.ReleaseStep = Runtime.Step;
-      Runtime.MissedControllerFrames = 0;
-      Runtime.DuplicateControllerFrames = 0;
-      UE_LOG(LogUvdVehicle, Display,
-             TEXT("ArduPilot armed; controller now drives the vehicle"));
+      Runtime.ReleaseRequested = true;
+      if (Runtime.ReleaseParticipants <= 1) {
+        CommitRelease(Runtime);
+        return;
+      }
+      FScopeLock Lock(&ReleaseBarrier.Mutex);
+      ++ReleaseBarrier.Requested;
+      if (ReleaseBarrier.Requested >= Runtime.ReleaseParticipants &&
+          ReleaseBarrier.TargetSimTimeS < 0.0) {
+        // Both callbacks observe the same future physics time even when their
+        // UDP release packets arrive on different ticks.
+        ReleaseBarrier.TargetSimTimeS = SimTimeS + 2.0 * Runtime.FixedDtS;
+      }
     }
+  }
+  if (!Runtime.ReleaseRequested || Runtime.Released ||
+      Runtime.ReleaseParticipants <= 1) {
+    return;
+  }
+  double TargetSimTimeS = -1.0;
+  {
+    FScopeLock Lock(&ReleaseBarrier.Mutex);
+    TargetSimTimeS = ReleaseBarrier.TargetSimTimeS;
+  }
+  if (TargetSimTimeS >= 0.0 &&
+      SimTimeS + 0.1 * Runtime.FixedDtS >= TargetSimTimeS) {
+    CommitRelease(Runtime);
   }
 }
 
@@ -614,10 +687,8 @@ bool WriteExchange(FUvdVehicleRuntime& Runtime,
     return true;
   }
   const uint64 ReleasedSteps = Runtime.Step - Runtime.ReleaseStep;
-  const double DurationS =
-      Runtime.PlantType == EUvdPlantType::FossenOtter ? 30.0 : 12.0;
-  const uint64 FinalStep =
-      static_cast<uint64>(FMath::RoundToDouble(DurationS / Runtime.FixedDtS));
+  const uint64 FinalStep = static_cast<uint64>(
+      FMath::RoundToDouble(Runtime.DurationS / Runtime.FixedDtS));
   if (ReleasedSteps > FinalStep) {
     return true;
   }
@@ -629,7 +700,7 @@ bool WriteExchange(FUvdVehicleRuntime& Runtime,
               TEXT("%.12f,%.12f,%.12f,%.12f,%.12f,%.12f,")
                   TEXT("%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,")
                       TEXT("%u,%u,%u,%u\n"),
-      TimeS, Runtime.Step * Runtime.FixedDtS, Runtime.Step, Runtime.LastFrame,
+      TimeS, Runtime.PhysicsTimeS, Runtime.PhysicsStep, Runtime.LastFrame,
       Runtime.ControllerFrameRateHz, Runtime.MissedControllerFrames,
       Runtime.DuplicateControllerFrames, Attitude.X, Attitude.Y, Attitude.Z,
       State.q_body_to_ned.w(), State.q_body_to_ned.x(), State.q_body_to_ned.y(),
@@ -884,6 +955,7 @@ void UUvdVehicleComponent::BeginPlay() {
   Body = Cast<UPrimitiveComponent>(GetOwner()->GetRootComponent());
   Runtime = new FUvdVehicleRuntime();
   Runtime->OpenLoop = OpenLoop;
+  Runtime->ReleaseParticipants = SynchronizedReleaseParticipants;
   if (!Body || !Body->IsSimulatingPhysics() || !LoadConfiguration() ||
       !OpenTruthOutput() || !ConfigureBody() || !ConfigureVisual() ||
       !ConfigureCesium() || (!Runtime->OpenLoop && !OpenSockets(*Runtime))) {
@@ -893,6 +965,7 @@ void UUvdVehicleComponent::BeginPlay() {
   }
   SetInitialState();
   Runtime->PreviousState = Runtime->InitialState;
+  RegisterReleaseBarrier(*Runtime);
   if (Runtime->PlantType == EUvdPlantType::FossenOtter && Runtime->OpenLoop) {
     Runtime->Released = true;
   }
@@ -907,6 +980,7 @@ void UUvdVehicleComponent::BeginPlay() {
 void UUvdVehicleComponent::EndPlay(const EEndPlayReason::Type EndPlayReason) {
   SetAsyncPhysicsTickEnabled(false);
   if (Runtime) {
+    UnregisterReleaseBarrier(*Runtime);
     CloseSockets(*Runtime);
     Runtime->TruthFile.Reset();
     Runtime->ExchangeFile.Reset();
@@ -995,6 +1069,9 @@ bool UUvdVehicleComponent::LoadConfiguration() {
       return false;
     }
     Runtime->PlantType = EUvdPlantType::FossenOtter;
+    Runtime->DurationS = Root->HasTypedField<EJson::Number>(TEXT("duration_s"))
+                             ? Number(Root, TEXT("duration_s"))
+                             : 30.0;
     Runtime->OtterState.body = Runtime->InitialState;
     const TArray<TSharedPtr<FJsonValue>>& ShaftSpeed =
         Initial->GetArrayField(TEXT("propeller_speed_radps"));
@@ -1022,6 +1099,9 @@ bool UUvdVehicleComponent::LoadConfiguration() {
   }
 
   Runtime->PlantType = EUvdPlantType::Aerosonde;
+  Runtime->DurationS = Root->HasTypedField<EJson::Number>(TEXT("duration_s"))
+                           ? Number(Root, TEXT("duration_s"))
+                           : 12.0;
   Runtime->WindNedMps = JsonVector(Root, TEXT("wind_ned_mps"));
   const TSharedPtr<FJsonObject> Trim = Root->GetObjectField(TEXT("trim"));
   Runtime->TrimCommand = {
@@ -1302,6 +1382,9 @@ bool UUvdVehicleComponent::ConfigureCesium() {
   if (!Runtime->Georeference) {
     return false;
   }
+  if (!ConfigureWorld) {
+    return true;
+  }
   Runtime->Georeference->SetActorTransform(FTransform::Identity);
   Runtime->Georeference->SetScale(100.0);
   Runtime->Georeference->SetOriginPlacement(
@@ -1357,6 +1440,9 @@ void UUvdVehicleComponent::AsyncPhysicsTickComponent(float DeltaTime,
   if (!Runtime || Runtime->Failed || !Body) {
     return;
   }
+  Runtime->PhysicsTimeS = SimTime;
+  Runtime->PhysicsStep =
+      static_cast<uint64>(FMath::RoundToDouble(SimTime / Runtime->FixedDtS));
   FBodyInstanceAsyncPhysicsTickHandle Handle =
       Body->GetBodyInstanceAsyncPhysicsTickHandle();
   if (!Handle) {
@@ -1384,7 +1470,7 @@ void UUvdVehicleComponent::AsyncPhysicsTickComponent(float DeltaTime,
         Runtime->Failed = true;
         return;
       }
-      PollRelease(*Runtime);
+      PollRelease(*Runtime, SimTime);
     }
     const uvd::OtterCommand Command =
         Runtime->OpenLoop ? Runtime->OtterOpenLoopCommand
@@ -1403,8 +1489,8 @@ void UUvdVehicleComponent::AsyncPhysicsTickComponent(float DeltaTime,
       const uint64 TruthInterval = static_cast<uint64>(FMath::Max(
           1.0, FMath::RoundToDouble(1.0 / (20.0 * Runtime->FixedDtS))));
       const uint64 ReleasedSteps = Runtime->Step - Runtime->ReleaseStep;
-      const uint64 FinalTruthStep =
-          static_cast<uint64>(FMath::RoundToDouble(30.0 / Runtime->FixedDtS));
+      const uint64 FinalTruthStep = static_cast<uint64>(
+          FMath::RoundToDouble(Runtime->DurationS / Runtime->FixedDtS));
       if (ReleasedSteps <= FinalTruthStep &&
           ReleasedSteps % TruthInterval == 0 &&
           !WriteOtterTruth(*Runtime, Model)) {
@@ -1447,7 +1533,7 @@ void UUvdVehicleComponent::AsyncPhysicsTickComponent(float DeltaTime,
     Runtime->Failed = true;
     return;
   }
-  PollRelease(*Runtime);
+  PollRelease(*Runtime, SimTime);
   const uvd::AircraftCommand& Command =
       Runtime->Released ? Runtime->ControllerCommand : Runtime->TrimCommand;
   const uvd::AtmosphereSnapshot Atmosphere =
@@ -1467,8 +1553,8 @@ void UUvdVehicleComponent::AsyncPhysicsTickComponent(float DeltaTime,
     const uint64 TruthInterval = static_cast<uint64>(FMath::Max(
         1.0, FMath::RoundToDouble(1.0 / (20.0 * Runtime->FixedDtS))));
     const uint64 ReleasedSteps = Runtime->Step - Runtime->ReleaseStep;
-    const uint64 FinalTruthStep =
-        static_cast<uint64>(FMath::RoundToDouble(12.0 / Runtime->FixedDtS));
+    const uint64 FinalTruthStep = static_cast<uint64>(
+        FMath::RoundToDouble(Runtime->DurationS / Runtime->FixedDtS));
     if (ReleasedSteps <= FinalTruthStep && ReleasedSteps % TruthInterval == 0 &&
         !WriteAircraftTruth(*Runtime, State, Effectors, Model)) {
       Runtime->Failed = true;

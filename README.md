@@ -1,10 +1,11 @@
 # UnrealVehicleDynamics
 
 UnrealVehicleDynamics runs C++ vehicle models headlessly or inside Unreal
-Engine with Cesium and ArduPilot SITL. The repository includes two examples:
+Engine with Cesium and ArduPilot SITL. The repository includes three examples:
 
 - a BYU/MAVSim Aerosonde controlled by ArduPlane; and
-- a Fossen Otter surface vessel controlled by ArduRover.
+- a Fossen Otter surface vessel controlled by ArduRover; and
+- both vehicles synchronized in one Unreal/Cesium world.
 
 Both models use SI units, North-East-Down world axes, and Forward-Right-Down
 body axes.
@@ -66,11 +67,12 @@ cp .env.example .env
 # Edit .env and set CESIUM_ION_TOKEN.
 ```
 
-Run either closed-loop demonstration:
+Run a closed-loop demonstration:
 
 ```sh
 ./run.py          # Aerosonde + ArduPlane FBWA
 ./run.py otter    # Otter + ArduRover ACRO
+./run.py dual     # Both vehicles, released on one shared clock
 ```
 
 `run.py` builds the core and Unreal plugin with hot reload disabled, builds the
@@ -85,9 +87,18 @@ ardupilot/      DataFlash and SITL files
 report.html     plots and timing checks
 ```
 
+The dual run uses Plane ports 9002/9003 with system ID 1 and Rover ports
+9012/9013 with system ID 17. It waits until both controllers are armed, then
+releases both plants at the same 120 Hz physics step. It writes the same files
+under `runs/dual-*/plane/` and
+`runs/dual-*/otter/`; `scenario.json` records the run contract, and the
+top-level `report.html` checks coverage, missed or duplicate frames, and maximum
+step and clock skew. This is a transport and synchronization baseline, not yet
+a ship-landing scenario.
+
 Use `1`–`4` for chase, orbit, onboard, and side cameras. Right-drag orbits,
-the scroll wheel zooms, `F` reacquires the vehicle, and Space pauses the model
-while leaving the camera active.
+the scroll wheel zooms, Tab selects the other vehicle, `F` reacquires the
+vehicle, and Space pauses the selected model while leaving the camera active.
 
 ## Model checks
 

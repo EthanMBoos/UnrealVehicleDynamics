@@ -24,6 +24,7 @@ class UNREALVEHICLEDYNAMICS_API AUvdCameraPawn final : public APawn {
   AUvdCameraPawn();
 
   virtual void BeginPlay() override;
+  virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
   virtual void PossessedBy(AController* NewController) override;
   virtual void Tick(float DeltaSeconds) override;
   virtual void SetupPlayerInputComponent(
@@ -37,6 +38,7 @@ class UNREALVEHICLEDYNAMICS_API AUvdCameraPawn final : public APawn {
   void SelectOnboard();
   void SelectSide();
   void CycleMode();
+  void CycleTarget();
   void Reacquire();
   void TogglePause();
   void BeginLook();
@@ -70,4 +72,6 @@ class UNREALVEHICLEDYNAMICS_API AUvdCameraPawn final : public APawn {
   int32 SavedMouseX = 0;
   int32 SavedMouseY = 0;
   bool Looking = false;
+  bool PreviousTabNavigation = true;
+  bool ChangedTabNavigation = false;
 };

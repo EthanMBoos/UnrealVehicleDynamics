@@ -2,15 +2,15 @@
 """Render the bounded FBWA roll run as a self-contained Plotly report."""
 
 import bisect
-import csv
 import html
 from pathlib import Path
-import statistics
 import sys
 
 import plotly.graph_objects as go
 import plotly.io as pio
 from plotly.subplots import make_subplots
+
+from report_common import lockstep_summary, read_rows
 
 
 BLUE = "#2563eb"
@@ -19,11 +19,6 @@ RED = "#dc2626"
 SLATE = "#64748b"
 PURPLE = "#7c3aed"
 ORANGE = "#ea580c"
-
-
-def read_rows(path):
-    with path.open(newline="") as source:
-        return list(csv.DictReader(source))
 
 
 def points(rows, field):
@@ -64,51 +59,13 @@ def maximum_difference(reference, comparison, wrap=False):
     )
 
 
-def lockstep_summary(exchange):
-    if len(exchange) < 2:
-        raise RuntimeError("exchange log does not contain enough frames")
-    frames = [int(row["servo_frame"]) for row in exchange]
-    steps = [int(row["step"]) for row in exchange]
-    physics_times = [float(row["physics_time_s"]) for row in exchange]
-    rates = {int(row["frame_rate_hz"]) for row in exchange}
-    frame_gaps = [right - left for left, right in zip(frames, frames[1:])]
-    step_gaps = [right - left for left, right in zip(steps, steps[1:])]
-    time_steps = [
-        right - left for left, right in zip(physics_times, physics_times[1:])
-    ]
-    rate_hz = next(iter(rates)) if len(rates) == 1 else 0
-    fixed_dt_s = statistics.median(time_steps)
-    missed = max(int(row["missed_frames"]) for row in exchange)
-    duplicates = max(int(row["duplicate_frames"]) for row in exchange)
-    rate_matches = rate_hz > 0 and abs(fixed_dt_s - 1.0 / rate_hz) < 1.0e-6
-    verified = (
-        all(gap == 1 for gap in frame_gaps)
-        and all(gap == 1 for gap in step_gaps)
-        and missed == 0
-        and duplicates == 0
-        and rate_matches
-    )
-    return {
-        "verified": verified,
-        "frames": len(exchange),
-        "rate_hz": rate_hz,
-        "fixed_dt_s": fixed_dt_s,
-        "missed": missed,
-        "duplicates": duplicates,
-    }
-
-
 def state_match_score(received, sent):
     differences = (
-        angle_difference(
-            float(received["roll_received_deg"]), float(sent["roll_deg"])
-        ),
+        angle_difference(float(received["roll_received_deg"]), float(sent["roll_deg"])),
         angle_difference(
             float(received["pitch_received_deg"]), float(sent["pitch_deg"])
         ),
-        angle_difference(
-            float(received["yaw_received_deg"]), float(sent["yaw_deg"])
-        ),
+        angle_difference(float(received["yaw_received_deg"]), float(sent["yaw_deg"])),
         10.0 * (float(received["ax_received_mps2"]) - float(sent["ax_mps2"])),
         10.0 * (float(received["ay_received_mps2"]) - float(sent["ay_mps2"])),
         10.0 * (float(received["az_received_mps2"]) - float(sent["az_mps2"])),
@@ -157,9 +114,7 @@ def trace(series, name, color, hover, suffix="", dash=None, **options):
         mode="lines",
         name=name,
         line=line,
-        hovertemplate=(
-            f"%{{x:.3f}} s · %{{y:{hover}}}{suffix}<extra>{name}</extra>"
-        ),
+        hovertemplate=(f"%{{x:.3f}} s · %{{y:{hover}}}{suffix}<extra>{name}</extra>"),
         **options,
     )
 
@@ -185,9 +140,7 @@ def sample_trace(series, name, color, hover, suffix="", **options):
             "symbol": "circle-open",
             "line": {"color": color, "width": 1.25},
         },
-        hovertemplate=(
-            f"%{{x:.3f}} s · %{{y:{hover}}}{suffix}<extra>{name}</extra>"
-        ),
+        hovertemplate=(f"%{{x:.3f}} s · %{{y:{hover}}}{suffix}<extra>{name}</extra>"),
         **options,
     )
 
@@ -252,15 +205,11 @@ def plot_html(command, plant, received, estimate, outputs):
     roll_input = trace(command, "Pilot roll input", SLATE, ".0f", showlegend=False)
     roll_input.line.shape = "hv"
     figure.add_trace(roll_input, row=1, col=1)
-    attitude_traces(
-        figure, 2, plant["roll"], received["roll"], estimate["roll"], True
-    )
+    attitude_traces(figure, 2, plant["roll"], received["roll"], estimate["roll"], True)
     attitude_traces(
         figure, 3, plant["pitch"], received["pitch"], estimate["pitch"], False
     )
-    attitude_traces(
-        figure, 4, plant["yaw"], received["yaw"], estimate["yaw"], False
-    )
+    attitude_traces(figure, 4, plant["yaw"], received["yaw"], estimate["yaw"], False)
     figure.add_trace(
         trace(outputs["aileron"], "Aileron output", PURPLE, ".0f"),
         row=5,
@@ -341,17 +290,14 @@ def main(run_dir):
             "run is missing plant, exchange, SIMSTATE, telemetry, or DataFlash data"
         )
 
-    plant = {
-        axis: points(truth, f"{axis}_deg") for axis in ("roll", "pitch", "yaw")
-    }
+    plant = {axis: points(truth, f"{axis}_deg") for axis in ("roll", "pitch", "yaw")}
     aligned_simstate, received_error = align_received_state(simstate, exchange)
     received = {
         axis: points(aligned_simstate, f"{axis}_received_deg")
         for axis in ("roll", "pitch", "yaw")
     }
     estimate = {
-        axis: points(telemetry, f"{axis}_est_deg")
-        for axis in ("roll", "pitch", "yaw")
+        axis: points(telemetry, f"{axis}_est_deg") for axis in ("roll", "pitch", "yaw")
     }
     command = points(telemetry, "roll_pwm")
     outputs = {

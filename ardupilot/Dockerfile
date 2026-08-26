@@ -26,5 +26,7 @@ COPY --from=build /opt/ardupilot-venv /opt/ardupilot-venv
 COPY ardupilot/uvd.parm /opt/ardupilot/uvd.parm
 COPY ardupilot/entrypoint.sh /opt/ardupilot/entrypoint.sh
 COPY ardupilot/session.py /opt/ardupilot/session.py
+COPY ardupilot/report_common.py /opt/ardupilot/report_common.py
 COPY ardupilot/report.py /opt/ardupilot/report.py
+COPY ardupilot/dual_report.py /opt/ardupilot/dual_report.py
 ENTRYPOINT ["/opt/ardupilot/entrypoint.sh"]

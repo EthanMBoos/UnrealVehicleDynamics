@@ -10,7 +10,7 @@ public class UnrealVehicleDynamics : ModuleRules
         bEnableExceptions = true;
         PublicDependencyModuleNames.AddRange(new[] { "Core", "CoreUObject", "Engine" });
         PrivateDependencyModuleNames.AddRange(new[] {
-            "CesiumRuntime", "Chaos", "InputCore", "Json", "Networking", "PhysicsCore", "Sockets"
+            "CesiumRuntime", "Chaos", "InputCore", "Json", "Networking", "PhysicsCore", "Slate", "Sockets"
         });
 
         string PluginRoot = Path.GetFullPath(Path.Combine(ModuleDirectory, "../.."));
