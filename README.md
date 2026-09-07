@@ -9,12 +9,12 @@ PX4 so their behavior can be compared on common scenarios.
 
 ## Demonstration roadmap
 
-The main ArduPilot target is a complete
-[moving-platform VTOL takeoff and landing](https://ardupilot.org/plane/docs/common-ship-landing.html):
-an ArduPilot QuadPlane will launch from, track, approach, land on, and take off
-again from the simulated ArduRover-controlled boat. This requires adding a VTOL
-plant and aircraft, passing the boat's moving-platform position to it, and
-representing a usable landing deck and approach environment in Unreal.
+The next ArduPilot target is the
+[RotorS copter landing](docs/COPTER_LANDING.md): port the ETH RotorS quadrotor
+plant, prove it headlessly, fly one bounded standalone ArduCopter demonstration,
+then land on and take off from the simulated ArduRover-controlled Otter. The
+moving-deck run adds a landing target, explicit deck contact and a report of the
+two vehicles' relative motion, target health, contact, saturation and timing.
 
 Two other demanding targets broaden the controls evidence:
 
@@ -128,7 +128,7 @@ under `runs/dual-*/plane/` and
 `runs/dual-*/otter/`; `scenario.json` records the run contract, and the
 top-level `report.html` checks coverage, missed or duplicate frames, and maximum
 step and clock skew. This is a transport and synchronization baseline, not yet
-a ship-landing scenario.
+a moving-deck landing scenario.
 
 Use `1`–`4` for chase, orbit, onboard, and side cameras. Right-drag orbits,
 the scroll wheel zooms, Tab selects the other vehicle, `F` reacquires the

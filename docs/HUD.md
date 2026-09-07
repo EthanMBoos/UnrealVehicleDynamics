@@ -1,8 +1,8 @@
 # In-game HUD
 
 An in-game HUD could make the demonstrations easier to follow without opening
-Mission Planner. It is optional. Ship landing, scripted aerobatics, racing, and
-PX4 work should not wait for it.
+Mission Planner. It is optional. Copter landing, scripted aerobatics, racing,
+and PX4 work should not wait for it.
 
 The normal workflow stays the same:
 
@@ -112,10 +112,13 @@ ArduRover speed and steering targets and feedback. The
 [Rover tuning process](https://ardupilot.org/rover/docs/rover-tuning-process.html)
 uses those signals to tune the speed and steering-rate controllers.
 
-For Plane and VTOL, a guided
-[AUTOTUNE](https://ardupilot.org/plane/docs/automatic-tuning-with-autotune.html)
-display is more useful than general gain sliders. It should show prerequisites,
+For Plane or Copter, a guided display for the autopilot's native tuning workflow
+is more useful than general gain sliders. It should show prerequisites,
 progress, target and actual rates, the values learned, and a clear abort action.
+Use the documented
+[ArduPlane AUTOTUNE](https://ardupilot.org/plane/docs/automatic-tuning-with-autotune.html)
+or [ArduCopter AutoTune](https://ardupilot.org/copter/docs/autotune.html) behavior
+for the selected vehicle.
 
 Starting the checked-in run again restores its original settings. A useful
 change can be reviewed and saved later as a new parameter overlay or scenario.
@@ -142,33 +145,31 @@ ArduPilot <-> Python session <-> Unreal HUD
 scenario, stops it, and renders the report. HUD messages and parameter changes
 are simply added to that run's saved output.
 
-The Plane and Rover keep separate message streams and parameter state. Never
-send vehicle commands or parameter changes to a broadcast system ID.
+The Plane, Rover and Copter sessions keep separate message streams and parameter
+state. Never send vehicle commands or parameter changes to a broadcast system
+ID.
 
-## Ship landing
+## Copter landing on the Otter
 
-The ship-landing run will need a more specific display. Show:
+The moving-deck copter run will need a more specific display. Show:
 
-- the QuadPlane and Rover system IDs;
-- whether the aircraft is receiving the Rover beacon position;
-- beacon age;
-- beacon position and actual deck landing point;
-- aircraft position and velocity relative to the deck;
+- the Copter and Rover system IDs;
+- whether ArduCopter is receiving a valid landing target;
+- landing-target age, position and actual deck landing point;
+- copter position and velocity relative to the deck;
 - ship heading and speed;
-- landing offset;
-- hold-off orbit;
-- approach and abort directions; and
+- horizontal landing error and deck clearance;
+- target-loss and touchdown state; and
 - the current takeoff or landing phase.
 
-ArduPilot's
-[moving-platform documentation](https://ardupilot.org/plane/docs/common-ship-landing.html)
-describes the beacon, landing offset, hold-off point, approach angle, and pilot
-inputs used during the landing. The HUD should make those states visible. It
-should not invent a different landing procedure.
+The [RotorS copter landing plan](COPTER_LANDING.md) uses ArduCopter Precision
+Landing and `LANDING_TARGET`, matches the boat velocity, aborts when the target
+is lost, and uses explicit deck contact before disarming. The HUD should make
+those states visible without inventing another landing procedure.
 
 The run ends on touchdown, abort, or a maximum run time. Its report should add
-deck-relative path, approach error, touchdown velocity, beacon age, clearance,
-saturation, and lockstep timing.
+deck-relative path, landing error, touchdown velocity, target age, clearance,
+contact and arming state, saturation, and lockstep timing.
 
 ## Scripted aerobatics
 
@@ -224,7 +225,7 @@ scripts, parameters, commands, and report.
 1. Add a read-only display to the current Plane, Otter, and dual runs.
 2. Add the saved event list and explicit command target.
 3. Add a dedicated Otter tuning run with a few approved parameters.
-4. Add special displays only after ship landing, aerobatics, and racing runs
+4. Add special displays only after copter landing, aerobatics, and racing runs
    work from the command line.
 5. Reuse the useful parts for PX4.
 
