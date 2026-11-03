@@ -109,6 +109,34 @@ Run a closed-loop demonstration:
 ./run.py dual     # Both vehicles, released on one shared clock
 ```
 
+
+The Otter profiles load `/Game/Tests/OtterWater`, an Unreal Water
+test level. The open-loop simulation can be launched without Docker.
+
+Wave visualization and preliminary wave physics are independently
+configurable:
+
+```powershell
+python run.py otter-open-loop
+python run.py otter-open-loop --waves
+python run.py otter-open-loop --wave-physics
+python run.py otter-open-loop --waves --wave-physics
+```
+
+- Default: Calm-water Fossen dynamics.
+- `--waves`: Enables visual Gerstner waves in Unreal.
+- `--wave-physics`: Enables a preliminary sinusoidal water-elevation
+  disturbance in the Fossen model (10 cm amplitude, 3 s period).
+- Both flags: Enables visual waves and wave physics independently.
+
+The physics disturbance is spatially uniform and is not yet
+synchronized with Unreal's visual waves. It is an experimental
+heave-response model, not a validated wave-force or capsizing model.
+
+See [Otter Water Experiment](docs/OTTER_WATER.md) for implementation
+details, experimental findings, and limitations.
+
+
 `run.py` builds the core and Unreal plugin with hot reload disabled, builds the
 selected ArduPilot Docker image, opens the game window, and stops both
 processes when the run ends. Results are written under `runs/`:

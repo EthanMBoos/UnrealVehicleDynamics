@@ -1,5 +1,7 @@
 #include "Components/BoxComponent.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
+#include "GerstnerWaterWaves.h"
 #include "GameFramework/Actor.h"
 #include "HAL/IConsoleManager.h"
 #include "Misc/CommandLine.h"
@@ -7,6 +9,7 @@
 #include "Modules/ModuleManager.h"
 #include "PhysicsEngine/PhysicsSettings.h"
 #include "UvdVehicleComponent.h"
+#include "WaterBodyOceanActor.h"
 
 class FUnrealVehicleDynamicsModule final : public IModuleInterface {
  public:
@@ -62,6 +65,29 @@ class FUnrealVehicleDynamicsModule final : public IModuleInterface {
                           const UWorld::InitializationValues) const {
     if (!World || !World->IsGameWorld()) {
       return;
+    }
+    if (FParse::Param(FCommandLine::Get(), TEXT("UvdVisualWaves"))) {
+      for (TActorIterator<AWaterBodyOcean> Ocean(World); Ocean; ++Ocean) {
+        // Decorative waves only. The C++ marine solver keeps its own datum.
+        UGerstnerWaterWaves* Waves = NewObject<UGerstnerWaterWaves>(*Ocean);
+        UGerstnerWaterWaveGeneratorSimple* Generator =
+            NewObject<UGerstnerWaterWaveGeneratorSimple>(Waves);
+        Generator->NumWaves = 8;
+        Generator->Seed = 17;
+        Generator->MinWavelength = 200.0F;
+        Generator->MaxWavelength = 1200.0F;
+        Generator->MinAmplitude = 5.0F;
+        Generator->MaxAmplitude = 15.0F;
+        Generator->WindAngleDeg = 30.0F;
+        Generator->DirectionAngularSpreadDeg = 45.0F;
+        Waves->GerstnerWaveGenerator = Generator;
+        Waves->RecomputeWaves(false);
+        Ocean->SetWaterWaves(Waves);
+        UE_LOG(LogTemp, Display,
+               TEXT("UVD visual waves enabled: %s, 8 waves, 2-12 m wavelengths, "
+                    "5-15 cm component amplitudes; boat physics unchanged"),
+               *Ocean->GetName());
+      }
     }
     FString PlaneRunPath;
     FString OtterRunPath;
