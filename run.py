@@ -67,6 +67,7 @@ def unreal_editor():
     configured = os.environ.get("UVD_UNREAL_EDITOR")
     candidates = [
         Path(configured) if configured else None,
+        Path("C:/Program Files/Epic Games/UE_5.8/Engine/Binaries/Win64/UnrealEditor.exe"),
         Path(
             "/Users/Shared/Epic Games/UE_5.8/Engine/Binaries/Mac/UnrealEditor.app/Contents/MacOS/UnrealEditor"
         ),
@@ -93,6 +94,9 @@ def build(editor, profile):
     if sys.platform == "darwin":
         script = engine / "Build" / "BatchFiles" / "Mac" / "Build.sh"
         platform = "Mac"
+    elif sys.platform == "win32":
+        script = engine / "Build" / "BatchFiles" / "Build.bat"
+        platform = "Win64"
     else:
         script = engine / "Build" / "BatchFiles" / "Linux" / "Build.sh"
         platform = "Linux"
@@ -409,9 +413,23 @@ def run_dual(editor, profile, run_dir):
 def main():
     load_local_env()
     profile_name = sys.argv[1] if len(sys.argv) > 1 else "plane"
-    if profile_name not in PROFILES or len(sys.argv) > 2:
+
+    options = sys.argv[2:]
+    allowed_options = {"--waves", "--wave-physics"}
+
+    if (profile_name not in PROFILES
+            or any(option not in allowed_options for option in options)
+            or len(options) != len(set(options))
+            or (options and not profile_name.startswith("otter"))):
         choices = " | ".join(PROFILES)
-        raise RuntimeError(f"usage: ./run.py [{choices}]")
+        raise RuntimeError(
+            f"usage: ./run.py [{choices}] "
+            "[--waves] [--wave-physics] (Otter only)"
+        )
+
+    visual_waves = "--waves" in options
+    wave_physics = "--wave-physics" in options
+
     profile = PROFILES[profile_name]
     editor = unreal_editor()
     build(editor, profile)
@@ -431,6 +449,7 @@ def main():
     unreal_command = [
         str(editor),
         str(PROJECT),
+        *(["/Game/Tests/OtterWater"] if profile_name.startswith("otter") else []),
         "-game",
         "-log",
         "-novsync",
@@ -441,6 +460,11 @@ def main():
     ]
     if profile_name == "otter-open-loop":
         unreal_command.append("-UvdOpenLoop")
+    if visual_waves:
+        unreal_command.append("-UvdVisualWaves")
+    if wave_physics:
+        unreal_command.append("-UvdWavePhysics")
+
     unreal = subprocess.Popen(unreal_command)
     if not profile["image"]:
         try:

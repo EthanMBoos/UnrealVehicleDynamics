@@ -1472,12 +1472,34 @@ void UUvdVehicleComponent::AsyncPhysicsTickComponent(float DeltaTime,
       }
       PollRelease(*Runtime, SimTime);
     }
+
     const uvd::OtterCommand Command =
         Runtime->OpenLoop ? Runtime->OtterOpenLoopCommand
                           : (Runtime->Released ? Runtime->OtterControllerCommand
                                                : uvd::OtterCommand{});
+
+    uvd::OtterEnvironment WaveEnvironment = Runtime->OtterEnvironment;
+
+    const bool bEnableWavePhysics =
+        FParse::Param(FCommandLine::Get(), TEXT("UvdWavePhysics"));
+
+    if (bEnableWavePhysics) {
+      // Preliminary uniform water-elevation experiment.
+      // Not a spatially resolved wave-force model.
+      constexpr double WaveAmplitudeM = 0.10;
+      constexpr double WavePeriodS = 3.0;
+      constexpr double Pi = 3.14159265358979323846;
+
+      const double WaveHeightM =
+          WaveAmplitudeM *
+          std::sin((2.0 * Pi / WavePeriodS) * Runtime->PhysicsTimeS);
+
+      // NED: positive upward displacement means negative down.
+      WaveEnvironment.water_surface_down_m -= WaveHeightM;
+    }
+
     const uvd::OtterModelOutput Model = uvd::evaluate_fossen_otter(
-        Runtime->OtterState, Command, Runtime->OtterEnvironment,
+        Runtime->OtterState, Command, WaveEnvironment,
         Runtime->OtterModel);
     if (!Model.valid) {
       Runtime->Failed = true;
@@ -1501,7 +1523,7 @@ void UUvdVehicleComponent::AsyncPhysicsTickComponent(float DeltaTime,
     }
 
     const uvd::OtterState Next = uvd::step_fossen_otter_rk4(
-        Runtime->OtterState, Command, Runtime->OtterEnvironment,
+        Runtime->OtterState, Command, WaveEnvironment,
         Runtime->OtterModel, Runtime->FixedDtS);
     if (!uvd::is_finite(Next.body)) {
       Runtime->Failed = true;
